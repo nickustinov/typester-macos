@@ -4,8 +4,6 @@
 
 A lightweight macOS menu bar app for speech-to-text dictation using [Soniox](https://soniox.com) or [Deepgram](https://deepgram.com).
 
-![Demo](Assets/demo.gif)
-
 ## What it does
 
 Typester lives in your menu bar and lets you dictate text directly into any application. Hold a key to speak or toggle recording with a hotkey — your words are automatically typed into the active text field.
