@@ -98,7 +98,8 @@ class SettingsStore: ObservableObject {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
             kSecAttrAccount as String: keychainAccount,
-            kSecValueData as String: data
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
         ]
 
         SecItemAdd(query as CFDictionary, nil)

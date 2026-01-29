@@ -2,6 +2,8 @@
 
 A lightweight macOS menu bar app for speech-to-text dictation using [Soniox](https://soniox.com).
 
+![Demo](Assets/demo.gif)
+
 ## What it does
 
 Typester lives in your menu bar and lets you dictate text directly into any application. Press a hotkey to start recording, speak, and your words are automatically typed into the active text field.
@@ -10,6 +12,7 @@ Typester lives in your menu bar and lets you dictate text directly into any appl
 
 Features:
 - **Real-time transcription** — Uses Soniox streaming API for low-latency speech recognition
+- **60+ languages** — Supports English, Spanish, French, German, Chinese, Japanese, Korean, Arabic, Hindi, Portuguese, Russian, and [many more](https://soniox.com/docs/stt/concepts/supported-languages)
 - **Auto-paste** — Transcribed text is automatically pasted into the active application
 - **Global hotkeys** — Trigger dictation from anywhere (no Accessibility permission required for hotkeys)
 - **Triple-tap shortcuts** — Press a modifier key three times rapidly (e.g., ⌘⌘⌘)
@@ -70,6 +73,10 @@ Sources/
 ├── SonioxClient.swift      # WebSocket streaming transcription
 └── TextPaster.swift        # Clipboard + simulated Cmd+V paste
 ```
+
+## Disclaimer
+
+This project is not affiliated with, endorsed by, or sponsored by Soniox. Soniox is a third-party service used for speech recognition.
 
 ## License
 

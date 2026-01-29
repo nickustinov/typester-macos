@@ -5,6 +5,7 @@ import Carbon.HIToolbox
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
+    private var onboardingWindow: NSWindow?
 
     private let audioRecorder = AudioRecorder()
     private let sonioxClient = SonioxClient()
@@ -29,6 +30,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             name: .settingsChanged,
             object: nil
         )
+
+        // Show onboarding if not set up
+        if SettingsStore.shared.apiKey == nil {
+            showOnboarding()
+        }
     }
 
     @objc private func settingsChanged() {
@@ -45,10 +51,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func setAppIcon() {
-        let devPaths = [
+        // Try bundle Resources first (release build)
+        if let bundlePath = Bundle.main.resourcePath {
+            let path = bundlePath + "/AppIcon.icns"
+            if let image = NSImage(contentsOfFile: path) {
+                NSApp.applicationIconImage = image
+                return
+            }
+        }
+
+        // Try dev paths (swift run)
+        var devPaths = [
             FileManager.default.currentDirectoryPath + "/Assets/AppIcon.icns",
             (ProcessInfo.processInfo.environment["PWD"] ?? "") + "/Assets/AppIcon.icns"
         ]
+
+        // Also try relative to executable (for swift run from different directory)
+        if let execPath = Bundle.main.executablePath {
+            let url = URL(fileURLWithPath: execPath)
+                .deletingLastPathComponent() // debug
+                .deletingLastPathComponent() // arm64-apple-macosx
+                .deletingLastPathComponent() // .build
+            devPaths.append(url.path + "/Assets/AppIcon.icns")
+        }
 
         for path in devPaths {
             if let image = NSImage(contentsOfFile: path) {
@@ -59,10 +84,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func loadMenuBarIcon() -> NSImage {
-        let devPaths = [
+        // Try bundle Resources first (release build)
+        if let bundlePath = Bundle.main.resourcePath {
+            let path = bundlePath + "/MenuBarIcon.png"
+            if let image = NSImage(contentsOfFile: path) {
+                image.isTemplate = true
+                image.size = NSSize(width: 18, height: 18)
+                return image
+            }
+        }
+
+        // Try dev paths (swift run)
+        var devPaths = [
             FileManager.default.currentDirectoryPath + "/Assets/MenuBarIcon.png",
             (ProcessInfo.processInfo.environment["PWD"] ?? "") + "/Assets/MenuBarIcon.png"
         ]
+
+        // Also try relative to executable (for swift run from different directory)
+        if let execPath = Bundle.main.executablePath {
+            let url = URL(fileURLWithPath: execPath)
+                .deletingLastPathComponent() // debug
+                .deletingLastPathComponent() // arm64-apple-macosx
+                .deletingLastPathComponent() // .build
+            devPaths.append(url.path + "/Assets/MenuBarIcon.png")
+        }
 
         for path in devPaths {
             if let image = NSImage(contentsOfFile: path) {
@@ -202,6 +247,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         sonioxClient.onError = { [weak self] error in
             self?.stopRecording()
+            self?.showError(error)
+        }
+    }
+
+    private func showError(_ message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Transcription failed"
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "OK")
+
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            openSettings()
+        } else {
+            // Reset to accessory policy if not opening settings
+            NSApp.setActivationPolicy(.accessory)
         }
     }
 
@@ -364,9 +432,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        // Reset to accessory policy when settings closes (menu bar app behavior)
+        // Reset to accessory policy when settings/onboarding closes (menu bar app behavior)
         if NSApp.activationPolicy() == .regular {
             NSApp.setActivationPolicy(.accessory)
         }
+    }
+
+    // MARK: - Onboarding
+
+    private func showOnboarding() {
+        if onboardingWindow == nil {
+            let onboardingView = OnboardingView {
+                self.onboardingWindow?.close()
+                self.onboardingWindow = nil
+            }
+            let hostingController = NSHostingController(rootView: onboardingView)
+            let window = NSWindow(contentViewController: hostingController)
+            window.title = "Welcome to Typester"
+            window.styleMask = [.titled, .closable]
+            window.center()
+            window.delegate = self
+            onboardingWindow = window
+        }
+
+        setupMainMenu()
+
+        if NSApp.activationPolicy() != .regular {
+            NSApp.setActivationPolicy(.regular)
+        }
+
+        // Set icon after activation policy change
+        setAppIcon()
+
+        onboardingWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }

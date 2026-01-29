@@ -3,6 +3,7 @@ import Foundation
 class SonioxClient: NSObject {
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConfigSent = false
+    private var isIntentionalDisconnect = false
 
     // MARK: - Callbacks
 
@@ -22,6 +23,7 @@ class SonioxClient: NSObject {
 
         disconnect()
         isConfigSent = false
+        isIntentionalDisconnect = false
 
         let url = URL(string: "wss://stt-rt.soniox.com/transcribe-websocket")!
         let session = URLSession(configuration: .default)
@@ -33,6 +35,7 @@ class SonioxClient: NSObject {
     }
 
     func disconnect() {
+        isIntentionalDisconnect = true
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
         isConfigSent = false
@@ -95,7 +98,10 @@ class SonioxClient: NSObject {
 
             case .failure(let error):
                 DispatchQueue.main.async {
-                    self.onError?("Connection error: \(error.localizedDescription)")
+                    // Don't report error if we intentionally disconnected
+                    if !self.isIntentionalDisconnect {
+                        self.onError?("Connection error: \(error.localizedDescription)")
+                    }
                     self.onDisconnected?()
                 }
             }
@@ -118,6 +124,13 @@ class SonioxClient: NSObject {
     private func parseResponse(_ text: String) {
         guard let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return
+        }
+
+        // Check for error response (invalid API key, etc.)
+        if let error = json["error"] as? String {
+            onError?(error)
+            onDisconnected?()
             return
         }
 
