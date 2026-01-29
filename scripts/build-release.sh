@@ -5,7 +5,7 @@ set -e
 APP_NAME="Typester"
 BUNDLE_ID="com.typester.app"
 TEAM_ID="R892A93W42"
-VERSION="1.0.1"
+VERSION="1.0.0"
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

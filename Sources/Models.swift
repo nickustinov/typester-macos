@@ -1,6 +1,6 @@
 import Cocoa
 
-let appVersion = "1.0.1"
+let appVersion = "1.0.0"
 let githubURL = "https://github.com/nickustinov/typester-macos"
 
 struct ShortcutKeys: Codable, Equatable {
