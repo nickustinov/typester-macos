@@ -107,7 +107,7 @@ final class STTResponseParsingTests: XCTestCase {
         }
     }
 
-    func testSonioxNonFinalTokenIgnored() {
+    func testSonioxNonFinalTokenEmitted() {
         let config = SonioxConnectionConfig()
         let json: [String: Any] = [
             "tokens": [
@@ -117,7 +117,39 @@ final class STTResponseParsingTests: XCTestCase {
 
         let results = config.parseResponse(json)
 
-        XCTAssertEqual(results.count, 0, "Non-final tokens should be ignored")
+        XCTAssertEqual(results.count, 1)
+        if case .transcript(let text, let isFinal) = results[0] {
+            XCTAssertEqual(text, "partial")
+            XCTAssertFalse(isFinal)
+        } else {
+            XCTFail("Expected transcript result")
+        }
+    }
+
+    func testSonioxMixedFinalAndNonFinalTokens() {
+        let config = SonioxConnectionConfig()
+        let json: [String: Any] = [
+            "tokens": [
+                ["text": "Hello", "is_final": true],
+                ["text": " world", "is_final": false]
+            ]
+        ]
+
+        let results = config.parseResponse(json)
+
+        XCTAssertEqual(results.count, 2)
+        if case .transcript(let text, let isFinal) = results[0] {
+            XCTAssertEqual(text, "Hello")
+            XCTAssertTrue(isFinal)
+        } else {
+            XCTFail("Expected final transcript")
+        }
+        if case .transcript(let text, let isFinal) = results[1] {
+            XCTAssertEqual(text, " world")
+            XCTAssertFalse(isFinal)
+        } else {
+            XCTFail("Expected non-final transcript")
+        }
     }
 
     // MARK: - Deepgram response parsing
@@ -244,7 +276,7 @@ final class STTResponseParsingTests: XCTestCase {
         XCTAssertEqual(results.count, 0, "Empty transcripts should be ignored")
     }
 
-    func testDeepgramNonFinalIgnored() {
+    func testDeepgramNonFinalEmitted() {
         let config = DeepgramConnectionConfig()
         let json: [String: Any] = [
             "channel": [
@@ -257,6 +289,12 @@ final class STTResponseParsingTests: XCTestCase {
 
         let results = config.parseResponse(json)
 
-        XCTAssertEqual(results.count, 0, "Non-final results should be ignored")
+        XCTAssertEqual(results.count, 1)
+        if case .transcript(let text, let isFinal) = results[0] {
+            XCTAssertEqual(text, "partial")
+            XCTAssertFalse(isFinal)
+        } else {
+            XCTFail("Expected transcript result")
+        }
     }
 }

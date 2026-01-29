@@ -27,6 +27,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var normalIcon: NSImage?
     private var recordingIcon: NSImage?
     private var pendingFinalizeWorkItem: DispatchWorkItem?
+    private let subtitleOverlay = SubtitleOverlay.shared
 
     public override init() {
         super.init()
@@ -86,15 +87,22 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         sttProvider.onDisconnected = { [weak self] in
-            guard let self = self, self.isRecording else { return }
+            guard let self = self else { return }
+            self.subtitleOverlay.hide()
+            guard self.isRecording else { return }
             self.isRecording = false
             self.statusItem.button?.image = self.normalIcon
             self.rebuildMenu()
         }
 
         sttProvider.onTranscript = { [weak self] text, isFinal in
+            guard let self = self else { return }
+            Debug.log("onTranscript: \"\(text)\" isFinal=\(isFinal)")
             if isFinal {
-                self?.accumulatedText += text
+                self.accumulatedText += text
+                self.subtitleOverlay.updateFinal(text)
+            } else {
+                self.subtitleOverlay.updateInterim(text)
             }
         }
 
@@ -105,6 +113,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.textPaster.paste(text + " ")
                 self.accumulatedText = ""
             }
+            self.subtitleOverlay.clearText()
         }
 
         sttProvider.onFinalized = { [weak self] in
@@ -114,6 +123,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.textPaster.paste(text + " ")
                 self.accumulatedText = ""
             }
+            self.subtitleOverlay.hide()
             self.sttProvider.disconnect()
         }
 
@@ -121,6 +131,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard let self = self else { return }
             self.isRecording = false
             self.statusItem.button?.image = self.normalIcon
+            self.subtitleOverlay.hide()
             self.rebuildMenu()
             self.audioRecorder.stopRecording()
             self.showError(error)
@@ -510,6 +521,11 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem.button?.image = recordingIcon
         accumulatedText = ""
         rebuildMenu()
+
+        let frontApp = NSWorkspace.shared.frontmostApplication
+        let appName = frontApp?.localizedName ?? ""
+        let appIcon = frontApp?.icon
+        subtitleOverlay.show(appName: appName, appIcon: appIcon)
 
         // Start audio immediately - it will buffer while WebSocket connects
         audioRecorder.startRecording()

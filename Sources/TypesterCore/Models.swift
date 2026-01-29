@@ -1,6 +1,6 @@
 import Cocoa
 
-let appVersion = "1.3.0"
+let appVersion = "1.4.0"
 
 enum ActivationMode: String, Codable, CaseIterable {
     case hotkey = "hotkey"

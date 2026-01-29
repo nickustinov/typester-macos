@@ -15,7 +15,7 @@ struct DeepgramConnectionConfig: STTConnectionConfig {
             URLQueryItem(name: "sample_rate", value: "16000"),
             URLQueryItem(name: "channels", value: "1"),
             URLQueryItem(name: "punctuate", value: "true"),
-            URLQueryItem(name: "interim_results", value: "false"),
+            URLQueryItem(name: "interim_results", value: "true"),
             URLQueryItem(name: "endpointing", value: "100")
         ]
 
@@ -50,9 +50,7 @@ struct DeepgramConnectionConfig: STTConnectionConfig {
 
             Debug.log("Transcript: '\(transcript)' isFinal=\(isFinal) speechFinal=\(speechFinal)")
 
-            if isFinal {
-                results.append(.transcript(text: transcript, isFinal: true))
-            }
+            results.append(.transcript(text: transcript, isFinal: isFinal))
 
             if speechFinal {
                 results.append(.endpoint)

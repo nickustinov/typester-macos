@@ -179,21 +179,26 @@ class STTClientBase: NSObject, STTProvider {
     }
 
     private func receiveMessage() {
-        webSocketTask?.receive { [weak self] result in
+        let currentTask = webSocketTask
+        currentTask?.receive { [weak self] result in
             guard let self = self else { return }
 
             switch result {
             case .success(let message):
                 DispatchQueue.main.async {
+                    // Ignore messages from a stale socket
+                    guard self.webSocketTask === currentTask else { return }
                     self.handleMessage(message)
                 }
                 self.receiveMessage()
 
             case .failure(let error):
-                if !self.isIntentionalDisconnect {
-                    Debug.log("WebSocket receive FAILED: \(error.localizedDescription)")
-                }
                 DispatchQueue.main.async {
+                    // Ignore disconnects from a stale socket that was replaced
+                    guard self.webSocketTask === currentTask || self.webSocketTask == nil else { return }
+                    if !self.isIntentionalDisconnect {
+                        Debug.log("WebSocket receive FAILED: \(error.localizedDescription)")
+                    }
                     self.onDisconnected?()
                 }
             }
@@ -220,10 +225,35 @@ class STTClientBase: NSObject, STTProvider {
         let config = makeConnectionConfig()
         let results = config.parseResponse(json)
 
+        // Batch tokens from this response: Soniox re-sends all tokens each
+        // response, so we concatenate them into single final/interim callbacks.
+        var finalBatch = ""
+        var interimBatch = ""
+        var otherResults: [STTParseResult] = []
+
         for result in results {
             switch result {
             case .transcript(let text, let isFinal):
-                onTranscript?(text, isFinal)
+                if isFinal {
+                    finalBatch += text
+                } else {
+                    interimBatch += text
+                }
+            default:
+                otherResults.append(result)
+            }
+        }
+
+        // Emit batched transcripts before other events (endpoint, finalized, etc.)
+        if !finalBatch.isEmpty {
+            onTranscript?(finalBatch, true)
+        }
+        if !interimBatch.isEmpty {
+            onTranscript?(interimBatch, false)
+        }
+
+        for result in otherResults {
+            switch result {
             case .endpoint:
                 onEndpoint?()
             case .finalized:
@@ -233,7 +263,7 @@ class STTClientBase: NSObject, STTProvider {
                 onDisconnected?()
             case .finished:
                 onDisconnected?()
-            case .none:
+            case .transcript, .none:
                 break
             }
         }

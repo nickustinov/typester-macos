@@ -32,9 +32,7 @@ struct SonioxConnectionConfig: STTConnectionConfig {
                 }
 
                 let isFinal = token["is_final"] as? Bool ?? false
-                if isFinal {
-                    results.append(.transcript(text: tokenText, isFinal: true))
-                }
+                results.append(.transcript(text: tokenText, isFinal: isFinal))
             }
         }
 
