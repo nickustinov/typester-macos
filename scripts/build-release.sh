@@ -11,7 +11,8 @@ VERSION="1.2.0"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="$PROJECT_DIR/.build/release"
-APP_BUNDLE="$PROJECT_DIR/dist/$APP_NAME.app"
+DMG_STAGING="$PROJECT_DIR/dist/dmg-staging"
+APP_BUNDLE="$DMG_STAGING/$APP_NAME.app"
 DMG_PATH="$PROJECT_DIR/dist/$APP_NAME-$VERSION.dmg"
 
 cd "$PROJECT_DIR"
@@ -31,8 +32,12 @@ lipo -create \
 
 echo "==> Creating app bundle..."
 rm -rf dist
+mkdir -p "$DMG_STAGING"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+# Create Applications symlink for drag-and-drop install
+ln -s /Applications "$DMG_STAGING/Applications"
 
 # Copy binary
 cp "$BUILD_DIR/typester" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
@@ -87,7 +92,7 @@ if security find-identity -v -p codesigning | grep -q "Developer ID Application"
         "$APP_BUNDLE"
 
     echo "==> Creating DMG..."
-    hdiutil create -volname "$APP_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_PATH"
+    hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_PATH"
 
     echo "==> Signing DMG..."
     codesign --force --sign "$SIGNING_IDENTITY" "$DMG_PATH"
@@ -104,7 +109,7 @@ else
     echo "==> No Developer ID certificate found, skipping signing..."
 
     echo "==> Creating unsigned DMG..."
-    hdiutil create -volname "$APP_NAME" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_PATH"
+    hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_PATH"
 
     echo ""
     echo "==> Build complete (UNSIGNED)!"
