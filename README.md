@@ -1,5 +1,7 @@
 # Typester
 
+[![Tests](https://github.com/nickustinov/typester-macos/actions/workflows/tests.yml/badge.svg)](https://github.com/nickustinov/typester-macos/actions/workflows/tests.yml)
+
 A lightweight macOS menu bar app for speech-to-text dictation using [Soniox](https://soniox.com) or [Deepgram](https://deepgram.com).
 
 ![Demo](Assets/demo.gif)
@@ -101,20 +103,29 @@ security delete-generic-password -s "com.typester.api" -a "deepgram-api-key"
 
 ```
 Sources/
-├── main.swift              # App entry point
-├── AppDelegate.swift       # Status bar, menu, recording control
-├── Models.swift            # Data models (ShortcutKeys, ActivationMode, etc.)
-├── SettingsStore.swift     # UserDefaults + Keychain persistence
-├── SettingsView.swift      # SwiftUI settings interface
-├── OnboardingView.swift    # First-run setup wizard
-├── HotkeyManager.swift     # Global hotkey registration (Carbon Events)
-├── FnKeyMonitor.swift      # Fn key press-to-speak detection (CGEventTap)
-├── AudioRecorder.swift     # AVAudioEngine microphone capture
-├── STTProvider.swift       # Speech-to-text provider protocol
-├── SonioxClient.swift      # Soniox WebSocket streaming
-├── DeepgramClient.swift    # Deepgram WebSocket streaming
-├── TextPaster.swift        # Clipboard + simulated Cmd+V paste
-└── Debug.swift             # Debug logging utility
+├── main.swift                      # App entry point
+└── TypesterCore/
+    ├── AppDelegate.swift           # Status bar, menu, recording control
+    ├── Models.swift                # Data models (ShortcutKeys, ActivationMode, etc.)
+    ├── SettingsStore.swift         # UserDefaults + Keychain persistence
+    ├── SettingsView.swift          # SwiftUI settings interface
+    ├── OnboardingView.swift        # First-run setup wizard
+    ├── HotkeyManager.swift         # Global hotkey registration (Carbon Events)
+    ├── FnKeyMonitor.swift          # Fn key press-to-speak detection (CGEventTap)
+    ├── AudioRecorder.swift         # AVAudioEngine microphone capture
+    ├── STTProvider.swift           # Speech-to-text provider protocol
+    ├── STTClientBase.swift         # Base class for STT WebSocket clients
+    ├── SonioxClient.swift          # Soniox WebSocket streaming
+    ├── DeepgramClient.swift        # Deepgram WebSocket streaming
+    ├── TextPaster.swift            # Clipboard + simulated Cmd+V paste
+    ├── KeyboardUtils.swift         # Key code to string conversion
+    ├── AssetLoader.swift           # Asset path finding and loading
+    └── Debug.swift                 # Debug logging utility
+
+Tests/
+├── ModelsTests.swift               # Model encoding/decoding tests
+├── KeyboardUtilsTests.swift        # Keyboard utility tests
+└── STTResponseParsingTests.swift   # STT response parsing tests
 ```
 
 ## Disclaimer

@@ -83,6 +83,43 @@ struct SettingsView: View {
                     }
                 }
 
+                if settings.sttProvider == .soniox {
+                    Section {
+                        ForEach(settings.dictionaryTerms, id: \.self) { term in
+                            HStack {
+                                Text(term)
+                                    .lineLimit(1)
+
+                                Spacer()
+
+                                Button {
+                                    settings.dictionaryTerms.removeAll { $0 == term }
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.borderless)
+                            }
+                        }
+                    } header: {
+                        HStack {
+                            Text("Dictionary")
+                            Spacer()
+                            Button {
+                                showingAddTerm = true
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 16))
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    } footer: {
+                        Text("Add domain-specific words, names, or technical terms to improve recognition accuracy.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Permissions") {
                     HStack {
                         Circle()
@@ -124,41 +161,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-
-                Section {
-                    ForEach(settings.dictionaryTerms, id: \.self) { term in
-                        HStack {
-                            Text(term)
-                                .lineLimit(1)
-
-                            Spacer()
-
-                            Button {
-                                settings.dictionaryTerms.removeAll { $0 == term }
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.borderless)
-                        }
-                    }
-                } header: {
-                    HStack {
-                        Text("Dictionary")
-                        Spacer()
-                        Button {
-                            showingAddTerm = true
-                        } label: {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 16))
-                        }
-                        .buttonStyle(.borderless)
-                    }
-                } footer: {
-                    Text("Add domain-specific words, names, or technical terms to improve recognition accuracy.")
-                        .foregroundStyle(.secondary)
-                }
             }
             .formStyle(.grouped)
 
@@ -176,7 +178,7 @@ struct SettingsView: View {
             .padding(.vertical, 10)
         }
         .frame(width: 500)
-        .frame(minHeight: 500)
+        .frame(minHeight: 580)
         .sheet(isPresented: $showingAddTerm) {
             AddTermView { term in
                 if !settings.dictionaryTerms.contains(term) {
@@ -258,37 +260,10 @@ struct SettingsView: View {
     private var shortcutDescription: String {
         let keys = settings.shortcutKeys
         if keys.isTripleTap {
-            switch keys.tapModifier {
-            case "command": return "⌘⌘⌘"
-            case "option": return "⌥⌥⌥"
-            case "control": return "⌃⌃⌃"
-            case "shift": return "⇧⇧⇧"
-            default: return "⌘⌘⌘"
-            }
+            return KeyboardUtils.formatTripleTapDisplay(modifier: keys.tapModifier ?? "command")
         }
-        return shortcutDisplayString(keys: keys)
-    }
-
-    private func shortcutDisplayString(keys: ShortcutKeys) -> String {
-        var result = ""
         let modifiers = NSEvent.ModifierFlags(rawValue: keys.modifiers)
-        if modifiers.contains(.control) { result += "⌃" }
-        if modifiers.contains(.option) { result += "⌥" }
-        if modifiers.contains(.shift) { result += "⇧" }
-        if modifiers.contains(.command) { result += "⌘" }
-        result += keyCodeToString(keys.keyCode)
-        return result
-    }
-
-    private func keyCodeToString(_ keyCode: UInt16) -> String {
-        switch Int(keyCode) {
-        case kVK_Return: return "↩"
-        case kVK_Tab: return "⇥"
-        case kVK_Space: return "Space"
-        case kVK_Delete: return "⌫"
-        case kVK_Escape: return "⎋"
-        default: return "?"
-        }
+        return KeyboardUtils.formatShortcutDisplay(modifiers: modifiers, keyCode: keys.keyCode)
     }
 
     private func checkMicPermission() {
@@ -496,16 +471,9 @@ class ShortcutRecorderNSView: NSView {
 
                     if self.tripleTapTimestamps.count >= 3 {
                         self.tripleTapTimestamps.removeAll()
-                        let symbol: String
-                        switch mod {
-                        case "option": symbol = "⌥"
-                        case "control": symbol = "⌃"
-                        case "shift": symbol = "⇧"
-                        case "command": symbol = "⌘"
-                        default: symbol = "?"
-                        }
                         let keys = ShortcutKeys(modifiers: 0, keyCode: 0, isTripleTap: true, tapModifier: mod)
-                        self.onShortcutRecorded?(keys, "\(symbol)\(symbol)\(symbol)")
+                        let display = KeyboardUtils.formatTripleTapDisplay(modifier: mod)
+                        self.onShortcutRecorded?(keys, display)
                         return nil
                     }
                 }
@@ -517,7 +485,7 @@ class ShortcutRecorderNSView: NSView {
                 guard !modifiers.isEmpty else { return event }
 
                 let keyCode = event.keyCode
-                let displayString = self.shortcutDisplayString(keyCode: keyCode, modifiers: modifiers)
+                let displayString = KeyboardUtils.formatShortcutDisplay(modifiers: modifiers, keyCode: keyCode)
                 let keys = ShortcutKeys(
                     modifiers: modifiers.rawValue,
                     keyCode: keyCode,
@@ -530,84 +498,6 @@ class ShortcutRecorderNSView: NSView {
 
             return event
         }
-    }
-
-    private func shortcutDisplayString(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> String {
-        var result = ""
-
-        if modifiers.contains(.control) { result += "⌃" }
-        if modifiers.contains(.option) { result += "⌥" }
-        if modifiers.contains(.shift) { result += "⇧" }
-        if modifiers.contains(.command) { result += "⌘" }
-
-        result += keyCodeToString(keyCode)
-
-        return result
-    }
-
-    private func keyCodeToString(_ keyCode: UInt16) -> String {
-        switch Int(keyCode) {
-        case kVK_Return: return "↩"
-        case kVK_Tab: return "⇥"
-        case kVK_Space: return "Space"
-        case kVK_Delete: return "⌫"
-        case kVK_Escape: return "⎋"
-        case kVK_ForwardDelete: return "⌦"
-        case kVK_LeftArrow: return "←"
-        case kVK_RightArrow: return "→"
-        case kVK_UpArrow: return "↑"
-        case kVK_DownArrow: return "↓"
-        case kVK_Home: return "↖"
-        case kVK_End: return "↘"
-        case kVK_PageUp: return "⇞"
-        case kVK_PageDown: return "⇟"
-        case kVK_F1: return "F1"
-        case kVK_F2: return "F2"
-        case kVK_F3: return "F3"
-        case kVK_F4: return "F4"
-        case kVK_F5: return "F5"
-        case kVK_F6: return "F6"
-        case kVK_F7: return "F7"
-        case kVK_F8: return "F8"
-        case kVK_F9: return "F9"
-        case kVK_F10: return "F10"
-        case kVK_F11: return "F11"
-        case kVK_F12: return "F12"
-        default:
-            if let char = keyCodeToCharacter(keyCode) {
-                return char.uppercased()
-            }
-            return "?"
-        }
-    }
-
-    private func keyCodeToCharacter(_ keyCode: UInt16) -> String? {
-        let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
-        guard let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
-            return nil
-        }
-        let dataRef = unsafeBitCast(layoutData, to: CFData.self)
-        let keyboardLayout = unsafeBitCast(CFDataGetBytePtr(dataRef), to: UnsafePointer<UCKeyboardLayout>.self)
-
-        var deadKeyState: UInt32 = 0
-        var chars = [UniChar](repeating: 0, count: 4)
-        var length: Int = 0
-
-        let result = UCKeyTranslate(
-            keyboardLayout,
-            keyCode,
-            UInt16(kUCKeyActionDown),
-            0,
-            UInt32(LMGetKbdType()),
-            OptionBits(kUCKeyTranslateNoDeadKeysBit),
-            &deadKeyState,
-            chars.count,
-            &length,
-            &chars
-        )
-
-        guard result == noErr && length > 0 else { return nil }
-        return String(utf16CodeUnits: chars, count: length)
     }
 
     deinit {

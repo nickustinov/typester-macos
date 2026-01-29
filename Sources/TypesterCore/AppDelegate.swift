@@ -4,7 +4,7 @@ import Carbon.HIToolbox
 import AVFoundation
 import CoreAudio
 
-class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
     private var settingsWindow: NSWindow?
     private var onboardingWindow: NSWindow?
@@ -26,10 +26,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var accumulatedText = ""
     private var normalIcon: NSImage?
     private var recordingIcon: NSImage?
+    private var pendingFinalizeWorkItem: DispatchWorkItem?
+
+    public override init() {
+        super.init()
+    }
 
     // MARK: - App lifecycle
 
-    func applicationDidFinishLaunching(_ notification: Notification) {
+    public func applicationDidFinishLaunching(_ notification: Notification) {
         sttProvider = createSTTProvider()
         setupIcons()
         setupStatusItem()
@@ -131,73 +136,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func setAppIcon() {
-        // Try bundle Resources first (release build)
-        if let bundlePath = Bundle.main.resourcePath {
-            let path = bundlePath + "/AppIcon.icns"
-            if let image = NSImage(contentsOfFile: path) {
-                NSApp.applicationIconImage = image
-                return
-            }
-        }
-
-        // Try dev paths (swift run)
-        var devPaths = [
-            FileManager.default.currentDirectoryPath + "/Assets/AppIcon.icns",
-            (ProcessInfo.processInfo.environment["PWD"] ?? "") + "/Assets/AppIcon.icns"
-        ]
-
-        // Also try relative to executable (for swift run from different directory)
-        if let execPath = Bundle.main.executablePath {
-            let url = URL(fileURLWithPath: execPath)
-                .deletingLastPathComponent() // debug
-                .deletingLastPathComponent() // arm64-apple-macosx
-                .deletingLastPathComponent() // .build
-            devPaths.append(url.path + "/Assets/AppIcon.icns")
-        }
-
-        for path in devPaths {
-            if let image = NSImage(contentsOfFile: path) {
-                NSApp.applicationIconImage = image
-                return
-            }
+        if let image = AssetLoader.loadImage(named: "AppIcon.icns") {
+            NSApp.applicationIconImage = image
         }
     }
 
     private func loadMenuBarIcon() -> NSImage {
-        // Try bundle Resources first (release build)
-        if let bundlePath = Bundle.main.resourcePath {
-            let path = bundlePath + "/MenuBarIcon.png"
-            if let image = NSImage(contentsOfFile: path) {
-                image.isTemplate = true
-                image.size = NSSize(width: 18, height: 18)
-                return image
-            }
+        if let image = AssetLoader.loadImage(named: "MenuBarIcon.png") {
+            image.isTemplate = true
+            image.size = NSSize(width: 18, height: 18)
+            return image
         }
-
-        // Try dev paths (swift run)
-        var devPaths = [
-            FileManager.default.currentDirectoryPath + "/Assets/MenuBarIcon.png",
-            (ProcessInfo.processInfo.environment["PWD"] ?? "") + "/Assets/MenuBarIcon.png"
-        ]
-
-        // Also try relative to executable (for swift run from different directory)
-        if let execPath = Bundle.main.executablePath {
-            let url = URL(fileURLWithPath: execPath)
-                .deletingLastPathComponent() // debug
-                .deletingLastPathComponent() // arm64-apple-macosx
-                .deletingLastPathComponent() // .build
-            devPaths.append(url.path + "/Assets/MenuBarIcon.png")
-        }
-
-        for path in devPaths {
-            if let image = NSImage(contentsOfFile: path) {
-                image.isTemplate = true
-                image.size = NSSize(width: 18, height: 18)
-                return image
-            }
-        }
-
-        // Fallback: simple mic shape
         return createFallbackIcon()
     }
 
@@ -296,14 +245,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let langMenu = NSMenu()
             let selectedLangs = Set(SettingsStore.shared.languageHints)
 
-            // Sort: selected languages first, then popular, then rest alphabetically
-            let sortedLanguages = supportedLanguages.sorted { a, b in
-                let aSelected = selectedLangs.contains(a.code)
-                let bSelected = selectedLangs.contains(b.code)
+            // Sort: selected languages first, then popular (in original order), then rest alphabetically
+            let sortedLanguages = supportedLanguages.enumerated().sorted { a, b in
+                let aSelected = selectedLangs.contains(a.element.code)
+                let bSelected = selectedLangs.contains(b.element.code)
                 if aSelected != bSelected { return aSelected }
-                if a.isPopular != b.isPopular { return a.isPopular }
-                return a.name < b.name
-            }
+                if a.element.isPopular != b.element.isPopular { return a.element.isPopular }
+                // Popular languages: preserve original order; others: alphabetically
+                if a.element.isPopular && b.element.isPopular { return a.offset < b.offset }
+                return a.element.name < b.element.name
+            }.map { $0.element }
 
             for lang in sortedLanguages {
                 let item = NSMenuItem(
@@ -550,6 +501,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         Debug.log("Starting recording...")
+
+        // Cancel any pending finalize from previous session
+        pendingFinalizeWorkItem?.cancel()
+        pendingFinalizeWorkItem = nil
+
         isRecording = true
         statusItem.button?.image = recordingIcon
         accumulatedText = ""
@@ -575,10 +531,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         audioRecorder.stopRecording()
 
         // Small delay to let provider process last audio chunks before finalizing
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        let workItem = DispatchWorkItem { [weak self] in
             Debug.log("Sending finalize after delay")
             self?.sttProvider.sendFinalize()
         }
+        pendingFinalizeWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: workItem)
     }
 
     // MARK: - Shortcut display
@@ -590,57 +548,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         let keys = SettingsStore.shared.shortcutKeys
         if keys.isTripleTap {
-            switch keys.tapModifier {
-            case "command": return "⌘⌘⌘"
-            case "option": return "⌥⌥⌥"
-            case "control": return "⌃⌃⌃"
-            case "shift": return "⇧⇧⇧"
-            default: return ""
-            }
+            return KeyboardUtils.formatTripleTapDisplay(modifier: keys.tapModifier ?? "command")
         }
 
-        // Regular keyboard shortcut
-        var result = ""
         let modifiers = NSEvent.ModifierFlags(rawValue: keys.modifiers)
-        if modifiers.contains(.control) { result += "⌃" }
-        if modifiers.contains(.option) { result += "⌥" }
-        if modifiers.contains(.shift) { result += "⇧" }
-        if modifiers.contains(.command) { result += "⌘" }
-
-        if let char = keyCodeToCharacter(keys.keyCode) {
-            result += char.uppercased()
-        }
-
-        return result
-    }
-
-    private func keyCodeToCharacter(_ keyCode: UInt16) -> String? {
-        let source = TISCopyCurrentKeyboardInputSource().takeRetainedValue()
-        guard let layoutData = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
-            return nil
-        }
-        let dataRef = unsafeBitCast(layoutData, to: CFData.self)
-        let keyboardLayout = unsafeBitCast(CFDataGetBytePtr(dataRef), to: UnsafePointer<UCKeyboardLayout>.self)
-
-        var deadKeyState: UInt32 = 0
-        var chars = [UniChar](repeating: 0, count: 4)
-        var length: Int = 0
-
-        let result = UCKeyTranslate(
-            keyboardLayout,
-            keyCode,
-            UInt16(kUCKeyActionDown),
-            0,
-            UInt32(LMGetKbdType()),
-            OptionBits(kUCKeyTranslateNoDeadKeysBit),
-            &deadKeyState,
-            chars.count,
-            &length,
-            &chars
-        )
-
-        guard result == noErr && length > 0 else { return nil }
-        return String(utf16CodeUnits: chars, count: length)
+        return KeyboardUtils.formatShortcutDisplay(modifiers: modifiers, keyCode: keys.keyCode)
     }
 
     // MARK: - Settings
@@ -700,7 +612,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.mainMenu = mainMenu
     }
 
-    func windowWillClose(_ notification: Notification) {
+    public func windowWillClose(_ notification: Notification) {
         // Reset to accessory policy when settings/onboarding closes (menu bar app behavior)
         if NSApp.activationPolicy() == .regular {
             NSApp.setActivationPolicy(.accessory)
