@@ -1,6 +1,8 @@
 import Cocoa
 import SwiftUI
 import Carbon.HIToolbox
+import AVFoundation
+import CoreAudio
 
 class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusItem: NSStatusItem!
@@ -169,22 +171,79 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func rebuildMenu() {
         let menu = NSMenu()
 
+        // Dictate/Stop item
         let title = isRecording ? "Stop" : "Dictate"
         let shortcut = shortcutDisplayString()
         let recordItem = NSMenuItem(
             title: title,
-            action: SettingsStore.shared.activationMode == .hotkey ? #selector(toggleRecording) : nil,
+            action: #selector(toggleRecording),
             keyEquivalent: ""
         )
 
-        if !shortcut.isEmpty {
-            let attributed = NSMutableAttributedString(string: "\(title)  \(shortcut)")
-            let shortcutRange = NSRange(location: title.count + 2, length: shortcut.count)
-            attributed.addAttribute(NSAttributedString.Key.foregroundColor, value: NSColor.tertiaryLabelColor, range: shortcutRange)
-            recordItem.attributedTitle = attributed
-        }
+        let attributed = NSMutableAttributedString(string: "\(title)  \(shortcut)")
+        let shortcutRange = NSRange(location: title.count + 2, length: shortcut.count)
+        attributed.addAttribute(.foregroundColor, value: NSColor.tertiaryLabelColor, range: shortcutRange)
+        recordItem.attributedTitle = attributed
 
         menu.addItem(recordItem)
+
+        menu.addItem(.separator())
+
+        // Microphone submenu
+        let micMenu = NSMenu()
+        let inputDevices = getInputDevices()
+        let selectedMicID = SettingsStore.shared.selectedMicrophoneID
+
+        let defaultMicItem = NSMenuItem(title: "System default", action: #selector(selectMicrophone(_:)), keyEquivalent: "")
+        defaultMicItem.target = self
+        defaultMicItem.representedObject = nil
+        defaultMicItem.state = selectedMicID == nil ? .on : .off
+        micMenu.addItem(defaultMicItem)
+
+        if !inputDevices.isEmpty {
+            micMenu.addItem(.separator())
+        }
+
+        for device in inputDevices {
+            let item = NSMenuItem(title: device.name, action: #selector(selectMicrophone(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = NSNumber(value: device.id)
+            item.state = selectedMicID == String(device.id) ? .on : .off
+            micMenu.addItem(item)
+        }
+
+        let micMenuItem = NSMenuItem(title: "Microphone", action: nil, keyEquivalent: "")
+        micMenuItem.submenu = micMenu
+        menu.addItem(micMenuItem)
+
+        // Languages submenu
+        let langMenu = NSMenu()
+        let selectedLangs = Set(SettingsStore.shared.languageHints)
+
+        // Sort: selected languages first, then popular, then rest alphabetically
+        let sortedLanguages = supportedLanguages.sorted { a, b in
+            let aSelected = selectedLangs.contains(a.code)
+            let bSelected = selectedLangs.contains(b.code)
+            if aSelected != bSelected { return aSelected }
+            if a.isPopular != b.isPopular { return a.isPopular }
+            return a.name < b.name
+        }
+
+        for lang in sortedLanguages {
+            let item = NSMenuItem(
+                title: "\(lang.flag) \(lang.name)",
+                action: #selector(toggleLanguage(_:)),
+                keyEquivalent: ""
+            )
+            item.target = self
+            item.representedObject = lang.code
+            item.state = selectedLangs.contains(lang.code) ? .on : .off
+            langMenu.addItem(item)
+        }
+
+        let langMenuItem = NSMenuItem(title: "Languages", action: nil, keyEquivalent: "")
+        langMenuItem.submenu = langMenu
+        menu.addItem(langMenuItem)
 
         menu.addItem(.separator())
 
@@ -203,6 +262,114 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         ))
 
         statusItem.menu = menu
+    }
+
+    @objc private func selectMicrophone(_ sender: NSMenuItem) {
+        if let deviceID = sender.representedObject as? NSNumber {
+            SettingsStore.shared.selectedMicrophoneID = String(deviceID.uint32Value)
+        } else {
+            SettingsStore.shared.selectedMicrophoneID = nil
+        }
+        rebuildMenu()
+    }
+
+    @objc private func toggleLanguage(_ sender: NSMenuItem) {
+        guard let code = sender.representedObject as? String else { return }
+        var hints = SettingsStore.shared.languageHints
+
+        if hints.contains(code) {
+            hints.removeAll { $0 == code }
+        } else {
+            hints.append(code)
+        }
+
+        SettingsStore.shared.languageHints = hints
+        rebuildMenu()
+    }
+
+    private struct AudioInputDevice {
+        let id: AudioDeviceID
+        let name: String
+    }
+
+    private func getInputDevices() -> [AudioInputDevice] {
+        var devices: [AudioInputDevice] = []
+
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var dataSize: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &dataSize) == noErr else {
+            return devices
+        }
+
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
+
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &propertyAddress, 0, nil, &dataSize, &deviceIDs) == noErr else {
+            return devices
+        }
+
+        for deviceID in deviceIDs {
+            // Check if device has input channels
+            var inputAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyStreamConfiguration,
+                mScope: kAudioDevicePropertyScopeInput,
+                mElement: kAudioObjectPropertyElementMain
+            )
+
+            var inputSize: UInt32 = 0
+            guard AudioObjectGetPropertyDataSize(deviceID, &inputAddress, 0, nil, &inputSize) == noErr, inputSize > 0 else {
+                continue
+            }
+
+            let bufferListPointer = UnsafeMutableRawPointer.allocate(byteCount: Int(inputSize), alignment: MemoryLayout<AudioBufferList>.alignment)
+            defer { bufferListPointer.deallocate() }
+
+            guard AudioObjectGetPropertyData(deviceID, &inputAddress, 0, nil, &inputSize, bufferListPointer) == noErr else {
+                continue
+            }
+
+            let bufferList = bufferListPointer.assumingMemoryBound(to: AudioBufferList.self).pointee
+            guard bufferList.mNumberBuffers > 0 else { continue }
+
+            // Get device name
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceNameCFString,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+
+            var name: Unmanaged<CFString>?
+            var nameSize = UInt32(MemoryLayout<CFString?>.size)
+
+            if AudioObjectGetPropertyData(deviceID, &nameAddress, 0, nil, &nameSize, &name) == noErr,
+               let deviceName = name?.takeUnretainedValue() as String? {
+                // Check transport type to filter virtual devices
+                var transportAddress = AudioObjectPropertyAddress(
+                    mSelector: kAudioDevicePropertyTransportType,
+                    mScope: kAudioObjectPropertyScopeGlobal,
+                    mElement: kAudioObjectPropertyElementMain
+                )
+                var transportType: UInt32 = 0
+                var transportSize = UInt32(MemoryLayout<UInt32>.size)
+
+                if AudioObjectGetPropertyData(deviceID, &transportAddress, 0, nil, &transportSize, &transportType) == noErr {
+                    // Skip virtual and aggregate devices
+                    if transportType == kAudioDeviceTransportTypeVirtual ||
+                       transportType == kAudioDeviceTransportTypeAggregate {
+                        continue
+                    }
+                }
+
+                devices.append(AudioInputDevice(id: deviceID, name: deviceName))
+            }
+        }
+
+        return devices
     }
 
     // MARK: - Hotkey
@@ -267,6 +434,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         sonioxClient.onEndpoint = { [weak self] in
+            guard let self = self else { return }
+            let text = self.accumulatedText.trimmingCharacters(in: .whitespaces)
+            if !text.isEmpty {
+                self.textPaster.paste(text + " ")
+                self.accumulatedText = ""
+            }
+        }
+
+        sonioxClient.onFinalized = { [weak self] in
             guard let self = self else { return }
             let text = self.accumulatedText.trimmingCharacters(in: .whitespaces)
             if !text.isEmpty {
@@ -348,7 +524,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func shortcutDisplayString() -> String {
         if SettingsStore.shared.activationMode == .pressToSpeak {
-            return "fn (hold)"
+            return "Fn"
         }
 
         let keys = SettingsStore.shared.shortcutKeys
@@ -413,7 +589,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let hostingController = NSHostingController(rootView: SettingsView())
             let window = NSWindow(contentViewController: hostingController)
             window.title = "Settings"
-            window.styleMask = [.titled, .closable]
+            window.styleMask = [.titled, .closable, .resizable]
+            window.minSize = NSSize(width: 580, height: 500)
             window.center()
             window.setFrameAutosaveName("SettingsWindow")
             window.delegate = self

@@ -9,6 +9,9 @@ class FnKeyMonitor {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var isFnDown = false
+    private var isActivated = false
+    private var activationTimer: DispatchWorkItem?
+    private let activationDelay: TimeInterval = 0.15
 
     private init() {}
 
@@ -44,6 +47,9 @@ class FnKeyMonitor {
     }
 
     func stop() {
+        activationTimer?.cancel()
+        activationTimer = nil
+
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
         }
@@ -55,6 +61,7 @@ class FnKeyMonitor {
         eventTap = nil
         runLoopSource = nil
         isFnDown = false
+        isActivated = false
     }
 
     private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -74,13 +81,23 @@ class FnKeyMonitor {
 
         if fnNowDown && !isFnDown {
             isFnDown = true
-            DispatchQueue.main.async { [weak self] in
-                self?.onFnPressed?()
+            activationTimer?.cancel()
+            let timer = DispatchWorkItem { [weak self] in
+                guard let self = self, self.isFnDown else { return }
+                self.isActivated = true
+                self.onFnPressed?()
             }
+            activationTimer = timer
+            DispatchQueue.main.asyncAfter(deadline: .now() + activationDelay, execute: timer)
         } else if !fnNowDown && isFnDown {
             isFnDown = false
-            DispatchQueue.main.async { [weak self] in
-                self?.onFnReleased?()
+            activationTimer?.cancel()
+            activationTimer = nil
+            if isActivated {
+                isActivated = false
+                DispatchQueue.main.async { [weak self] in
+                    self?.onFnReleased?()
+                }
             }
         }
 

@@ -6,16 +6,18 @@ A lightweight macOS menu bar app for speech-to-text dictation using [Soniox](htt
 
 ## What it does
 
-Typester lives in your menu bar and lets you dictate text directly into any application. Press a hotkey to start recording, speak, and your words are automatically typed into the active text field.
+Typester lives in your menu bar and lets you dictate text directly into any application. Hold a key to speak or toggle recording with a hotkey — your words are automatically typed into the active text field.
 
 **Bring Your Own Key (BYOK)** — Typester connects directly to Soniox using your own API key. No middleman, no subscription, no data collection. You pay only for what you use directly to Soniox.
 
 Features:
+- **Press-to-speak** — Hold the Fn key to dictate, release to paste (default mode)
+- **Toggle mode** — Or use a global hotkey to start/stop recording (triple-tap ⌘⌘⌘ or custom shortcut)
 - **Real-time transcription** — Uses Soniox streaming API for low-latency speech recognition
-- **60+ languages** — Supports English, Spanish, French, German, Chinese, Japanese, Korean, Arabic, Hindi, Portuguese, Russian, and [many more](https://soniox.com/docs/stt/concepts/supported-languages)
+- **60+ languages** — Auto-detects language, or select specific languages in the menu
+- **Microphone selection** — Choose your preferred input device from the menu
+- **Custom dictionary** — Add domain-specific words, names, or technical terms to improve accuracy
 - **Auto-paste** — Transcribed text is automatically pasted into the active application
-- **Global hotkeys** — Trigger dictation from anywhere (no Accessibility permission required for hotkeys)
-- **Triple-tap shortcuts** — Press a modifier key three times rapidly (e.g., ⌘⌘⌘)
 - **Secure API key storage** — Your Soniox API key is stored in the macOS Keychain
 - **Launch at login** — Start automatically when you log in
 
@@ -42,10 +44,17 @@ Typester requires two macOS permissions:
 
 ## Usage
 
-1. Click the menu bar icon to see the menu
-2. Press triple-Cmd (⌘⌘⌘) to start dictating
-3. Speak — your words appear in the active text field
-4. Press triple-Cmd again to stop
+**Press-to-speak mode (default):**
+1. Hold the Fn key
+2. Speak — your words are transcribed in real-time
+3. Release Fn — text is pasted into the active field
+
+**Toggle mode:**
+1. Press triple-Cmd (⌘⌘⌘) or your custom hotkey to start
+2. Speak — your words appear in the active text field
+3. Press the hotkey again to stop
+
+You can switch between modes in Settings. Use the menu bar to select your microphone, preferred languages, or access settings.
 
 ## Building from source
 
@@ -65,10 +74,12 @@ Requirements for building:
 Sources/
 ├── main.swift              # App entry point
 ├── AppDelegate.swift       # Status bar, menu, recording control
-├── Models.swift            # ShortcutKeys data model
+├── Models.swift            # Data models (ShortcutKeys, ActivationMode, etc.)
 ├── SettingsStore.swift     # UserDefaults + Keychain persistence
 ├── SettingsView.swift      # SwiftUI settings interface
+├── OnboardingView.swift    # First-run setup wizard
 ├── HotkeyManager.swift     # Global hotkey registration (Carbon Events)
+├── FnKeyMonitor.swift      # Fn key press-to-speak detection (CGEventTap)
 ├── AudioRecorder.swift     # AVAudioEngine microphone capture
 ├── SonioxClient.swift      # WebSocket streaming transcription
 └── TextPaster.swift        # Clipboard + simulated Cmd+V paste

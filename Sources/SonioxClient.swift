@@ -9,6 +9,7 @@ class SonioxClient: NSObject {
 
     var onTranscript: ((String, Bool) -> Void)?
     var onEndpoint: (() -> Void)?
+    var onFinalized: (() -> Void)?
     var onError: ((String) -> Void)?
     var onConnected: (() -> Void)?
     var onDisconnected: (() -> Void)?
@@ -58,7 +59,7 @@ class SonioxClient: NSObject {
     private func sendConfiguration() {
         guard let apiKey = SettingsStore.shared.apiKey else { return }
 
-        let config: [String: Any] = [
+        var config: [String: Any] = [
             "api_key": apiKey,
             "model": "stt-rt-preview",
             "audio_format": "pcm_s16le",
@@ -66,6 +67,16 @@ class SonioxClient: NSObject {
             "num_channels": 1,
             "enable_endpoint_detection": true
         ]
+
+        let languageHints = SettingsStore.shared.languageHints
+        if !languageHints.isEmpty {
+            config["language_hints"] = languageHints
+        }
+
+        let dictionaryTerms = SettingsStore.shared.dictionaryTerms
+        if !dictionaryTerms.isEmpty {
+            config["context"] = ["terms": dictionaryTerms]
+        }
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: config),
               let jsonString = String(data: jsonData, encoding: .utf8) else {
@@ -134,8 +145,13 @@ class SonioxClient: NSObject {
             for token in tokens {
                 guard let tokenText = token["text"] as? String else { continue }
 
-                if tokenText == "<end>" || tokenText == "<fin>" {
+                if tokenText == "<end>" {
                     onEndpoint?()
+                    continue
+                }
+
+                if tokenText == "<fin>" {
+                    onFinalized?()
                     continue
                 }
 

@@ -33,14 +33,38 @@ class SettingsStore: ObservableObject {
         }
     }
 
+    @Published var languageHints: [String] = [] {
+        didSet {
+            saveLanguageHints()
+        }
+    }
+
+    @Published var selectedMicrophoneID: String? = nil {
+        didSet {
+            saveSelectedMicrophone()
+        }
+    }
+
+    @Published var dictionaryTerms: [String] = [] {
+        didSet {
+            saveDictionaryTerms()
+        }
+    }
+
     private let shortcutKeysKey = "shortcutKeys"
     private let activationModeKey = "activationMode"
+    private let languageHintsKey = "languageHints"
+    private let selectedMicrophoneKey = "selectedMicrophone"
+    private let dictionaryTermsKey = "dictionaryTerms"
     private let keychainService = "com.typester.api"
     private let keychainAccount = "soniox-api-key"
 
     private init() {
         loadShortcutKeys()
         loadActivationMode()
+        loadLanguageHints()
+        loadSelectedMicrophone()
+        loadDictionaryTerms()
         syncLaunchAtLoginStatus()
     }
 
@@ -73,6 +97,34 @@ class SettingsStore: ObservableObject {
 
     private func saveActivationMode() {
         UserDefaults.standard.set(activationMode.rawValue, forKey: activationModeKey)
+    }
+
+    private func loadLanguageHints() {
+        if let hints = UserDefaults.standard.stringArray(forKey: languageHintsKey) {
+            languageHints = hints
+        }
+    }
+
+    private func saveLanguageHints() {
+        UserDefaults.standard.set(languageHints, forKey: languageHintsKey)
+    }
+
+    private func loadSelectedMicrophone() {
+        selectedMicrophoneID = UserDefaults.standard.string(forKey: selectedMicrophoneKey)
+    }
+
+    private func saveSelectedMicrophone() {
+        UserDefaults.standard.set(selectedMicrophoneID, forKey: selectedMicrophoneKey)
+    }
+
+    private func loadDictionaryTerms() {
+        if let terms = UserDefaults.standard.stringArray(forKey: dictionaryTermsKey) {
+            dictionaryTerms = terms
+        }
+    }
+
+    private func saveDictionaryTerms() {
+        UserDefaults.standard.set(dictionaryTerms, forKey: dictionaryTermsKey)
     }
 
     // MARK: - API key (Keychain)

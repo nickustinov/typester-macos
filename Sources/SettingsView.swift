@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import Carbon.HIToolbox
+import AppKit
 
 struct SettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
@@ -8,6 +9,7 @@ struct SettingsView: View {
     @State private var showApiKey = false
     @State private var micPermissionGranted = false
     @State private var accessibilityGranted = false
+    @State private var showingAddTerm = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -19,14 +21,13 @@ struct SettingsView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack(spacing: 8) {
-                            if showApiKey {
-                                TextField("", text: $apiKeyInput)
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .textFieldStyle(.plain)
-                                    .lineLimit(1)
-                            } else {
-                                SecureField("", text: $apiKeyInput)
-                                    .textFieldStyle(.plain)
+                            ZStack {
+                                if showApiKey {
+                                    SingleLineTextField(text: $apiKeyInput)
+                                } else {
+                                    SecureField("", text: $apiKeyInput)
+                                        .textFieldStyle(.plain)
+                                }
                             }
 
                             Button {
@@ -131,6 +132,41 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                Section {
+                    ForEach(settings.dictionaryTerms, id: \.self) { term in
+                        HStack {
+                            Text(term)
+                                .lineLimit(1)
+
+                            Spacer()
+
+                            Button {
+                                settings.dictionaryTerms.removeAll { $0 == term }
+                            } label: {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Dictionary")
+                        Spacer()
+                        Button {
+                            showingAddTerm = true
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 16))
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                } footer: {
+                    Text("Add domain-specific words, names, or technical terms to improve recognition accuracy.")
+                        .foregroundStyle(.secondary)
+                }
             }
             .formStyle(.grouped)
 
@@ -147,8 +183,15 @@ struct SettingsView: View {
             .font(.caption)
             .padding(.vertical, 10)
         }
-        .frame(width: 580)
-        .frame(minHeight: 420)
+        .frame(width: 500)
+        .frame(minHeight: 500)
+        .sheet(isPresented: $showingAddTerm) {
+            AddTermView { term in
+                if !settings.dictionaryTerms.contains(term) {
+                    settings.dictionaryTerms.append(term)
+                }
+            }
+        }
         .onAppear {
             if let key = settings.apiKey {
                 apiKeyInput = key
@@ -212,6 +255,92 @@ struct SettingsView: View {
                 micPermissionGranted = granted
             }
         }
+    }
+}
+
+private struct SingleLineTextField: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSTextField {
+        let textField = NSTextField()
+        textField.isBezeled = false
+        textField.drawsBackground = false
+        textField.isEditable = true
+        textField.isSelectable = true
+        textField.focusRingType = .none
+        if let cell = textField.cell as? NSTextFieldCell {
+            cell.usesSingleLineMode = true
+            cell.isScrollable = true
+            cell.lineBreakMode = .byTruncatingHead
+        }
+        textField.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        textField.delegate = context.coordinator
+        return textField
+    }
+
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        if nsView.stringValue != text {
+            nsView.stringValue = text
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        private let parent: SingleLineTextField
+
+        init(_ parent: SingleLineTextField) {
+            self.parent = parent
+        }
+
+        func controlTextDidChange(_ obj: Notification) {
+            guard let textField = obj.object as? NSTextField else { return }
+            parent.text = textField.stringValue
+        }
+    }
+}
+
+// MARK: - Add term view
+
+struct AddTermView: View {
+    let onSave: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var term: String = ""
+
+    var body: some View {
+        VStack(spacing: 0) {
+            VStack(alignment: .leading) {
+                TextField("Word or phrase", text: $term)
+                    .textFieldStyle(.roundedBorder)
+            }
+            .padding()
+
+            Divider()
+
+            HStack {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Spacer()
+
+                Button("Add") {
+                    let trimmed = term.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty {
+                        onSave(trimmed)
+                    }
+                    dismiss()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(term.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .padding()
+        }
+        .frame(width: 300, height: 120)
     }
 }
 

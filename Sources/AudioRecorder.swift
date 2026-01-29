@@ -1,5 +1,6 @@
 import AVFoundation
 import Cocoa
+import CoreAudio
 
 class AudioRecorder {
     private var audioEngine: AVAudioEngine?
@@ -54,9 +55,30 @@ class AudioRecorder {
 
     // MARK: - Private
 
+    private func setInputDevice(_ deviceID: AudioDeviceID, for engine: AVAudioEngine) {
+        let inputNode = engine.inputNode
+        guard let audioUnit = inputNode.audioUnit else { return }
+
+        var deviceIDCopy = deviceID
+        AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceIDCopy,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+    }
+
     private func setupAndStart() {
         audioEngine = AVAudioEngine()
         guard let audioEngine = audioEngine else { return }
+
+        // Set selected microphone if specified
+        if let micIDString = SettingsStore.shared.selectedMicrophoneID,
+           let micID = AudioDeviceID(micIDString) {
+            setInputDevice(micID, for: audioEngine)
+        }
 
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
