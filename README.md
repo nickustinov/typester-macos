@@ -21,6 +21,14 @@ Features:
 - macOS 13 or later
 - [Soniox](https://soniox.com) API key
 
+## Permissions
+
+Typester requires two macOS permissions:
+
+- **Microphone** — needed to capture your voice for transcription. Without this, the app cannot hear you speak.
+
+- **Accessibility** — needed to paste transcribed text into other applications. Typester simulates ⌘V to insert text at your cursor position. Without this, transcription works but text won't be pasted automatically.
+
 ## Installation
 
 1. Download `Typester-x.x.x.dmg` from Releases
