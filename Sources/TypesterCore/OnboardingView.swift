@@ -317,7 +317,7 @@ struct OnboardingView: View {
             }
         }
 
-        FnKeyMonitor.shared.onFnPressed = { [audioRecorder] in
+        PressKeyMonitor.shared.onKeyPressed = { [audioRecorder] in
             DispatchQueue.main.async {
                 isTrying = true
                 tryItText = ""
@@ -327,7 +327,7 @@ struct OnboardingView: View {
             provider.connect()
         }
 
-        FnKeyMonitor.shared.onFnReleased = { [audioRecorder] in
+        PressKeyMonitor.shared.onKeyReleased = { [audioRecorder] in
             audioRecorder.stopRecording()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 provider.sendFinalize()
@@ -345,11 +345,11 @@ struct OnboardingView: View {
             provider.disconnect()
         }
 
-        FnKeyMonitor.shared.start()
+        PressKeyMonitor.shared.start()
     }
 
     private func stopTryIt() {
-        FnKeyMonitor.shared.stop()
+        PressKeyMonitor.shared.stop()
         audioRecorder.stopRecording()
         sttProvider?.disconnect()
     }

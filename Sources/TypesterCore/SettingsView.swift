@@ -65,7 +65,7 @@ struct SettingsView: View {
                 Section("Activation") {
                     Picker("Mode", selection: $settings.activationMode) {
                         Text("Hotkey (toggle)").tag(ActivationMode.hotkey)
-                        Text("Fn key (hold to speak)").tag(ActivationMode.pressToSpeak)
+                        Text("Hold key to speak").tag(ActivationMode.pressToSpeak)
                     }
                     .pickerStyle(.radioGroup)
 
@@ -80,6 +80,14 @@ struct SettingsView: View {
                                 set: { if let keys = $0 { settings.shortcutKeys = keys } }
                             )
                         )
+                    }
+
+                    if settings.activationMode == .pressToSpeak {
+                        Picker("Key", selection: $settings.pressToSpeakKey) {
+                            ForEach(PressToSpeakKey.allCases, id: \.self) { key in
+                                Text(key.displayName).tag(key)
+                            }
+                        }
                     }
                 }
 
@@ -178,7 +186,7 @@ struct SettingsView: View {
             .padding(.vertical, 10)
         }
         .frame(width: 500)
-        .frame(minHeight: 580)
+        .frame(minHeight: 620)
         .sheet(isPresented: $showingAddTerm) {
             AddTermView { term in
                 if !settings.dictionaryTerms.contains(term) {

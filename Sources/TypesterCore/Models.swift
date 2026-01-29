@@ -1,10 +1,24 @@
 import Cocoa
 
-let appVersion = "1.2.0"
+let appVersion = "1.3.0"
 
 enum ActivationMode: String, Codable, CaseIterable {
     case hotkey = "hotkey"
     case pressToSpeak = "pressToSpeak"
+}
+
+enum PressToSpeakKey: String, Codable, CaseIterable {
+    case fn, leftCommand, rightCommand, leftOption, rightOption
+
+    var displayName: String {
+        switch self {
+        case .fn: return "Fn"
+        case .leftCommand: return "Left ⌘"
+        case .rightCommand: return "Right ⌘"
+        case .leftOption: return "Left ⌥"
+        case .rightOption: return "Right ⌥"
+        }
+    }
 }
 
 struct SupportedLanguage {

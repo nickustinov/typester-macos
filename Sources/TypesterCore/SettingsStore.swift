@@ -33,6 +33,13 @@ class SettingsStore: ObservableObject {
         }
     }
 
+    @Published var pressToSpeakKey: PressToSpeakKey = .fn {
+        didSet {
+            savePressToSpeakKey()
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        }
+    }
+
     @Published var languageHints: [String] = [] {
         didSet {
             saveLanguageHints()
@@ -61,6 +68,7 @@ class SettingsStore: ObservableObject {
     private let shortcutKeysKey = "shortcutKeys"
     private let sttProviderKey = "sttProvider"
     private let activationModeKey = "activationMode"
+    private let pressToSpeakKeyKey = "pressToSpeakKey"
     private let languageHintsKey = "languageHints"
     private let selectedMicrophoneKey = "selectedMicrophone"
     private let dictionaryTermsKey = "dictionaryTerms"
@@ -71,6 +79,7 @@ class SettingsStore: ObservableObject {
     private init() {
         loadShortcutKeys()
         loadActivationMode()
+        loadPressToSpeakKey()
         loadLanguageHints()
         loadSelectedMicrophone()
         loadDictionaryTerms()
@@ -107,6 +116,18 @@ class SettingsStore: ObservableObject {
 
     private func saveActivationMode() {
         UserDefaults.standard.set(activationMode.rawValue, forKey: activationModeKey)
+    }
+
+    private func loadPressToSpeakKey() {
+        guard let rawValue = UserDefaults.standard.string(forKey: pressToSpeakKeyKey),
+              let key = PressToSpeakKey(rawValue: rawValue) else {
+            return
+        }
+        pressToSpeakKey = key
+    }
+
+    private func savePressToSpeakKey() {
+        UserDefaults.standard.set(pressToSpeakKey.rawValue, forKey: pressToSpeakKeyKey)
     }
 
     private func loadLanguageHints() {

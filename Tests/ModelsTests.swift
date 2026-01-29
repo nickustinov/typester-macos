@@ -105,6 +105,37 @@ final class ModelsTests: XCTestCase {
         XCTAssertGreaterThan(popularLanguages.count, 0, "Should have at least one popular language")
     }
 
+    // MARK: - PressToSpeakKey tests
+
+    func testPressToSpeakKeyRawValues() {
+        XCTAssertEqual(PressToSpeakKey.fn.rawValue, "fn")
+        XCTAssertEqual(PressToSpeakKey.leftCommand.rawValue, "leftCommand")
+        XCTAssertEqual(PressToSpeakKey.rightCommand.rawValue, "rightCommand")
+        XCTAssertEqual(PressToSpeakKey.leftOption.rawValue, "leftOption")
+        XCTAssertEqual(PressToSpeakKey.rightOption.rawValue, "rightOption")
+    }
+
+    func testPressToSpeakKeyDisplayName() {
+        XCTAssertEqual(PressToSpeakKey.fn.displayName, "Fn")
+        XCTAssertEqual(PressToSpeakKey.leftCommand.displayName, "Left ⌘")
+        XCTAssertEqual(PressToSpeakKey.rightCommand.displayName, "Right ⌘")
+        XCTAssertEqual(PressToSpeakKey.leftOption.displayName, "Left ⌥")
+        XCTAssertEqual(PressToSpeakKey.rightOption.displayName, "Right ⌥")
+    }
+
+    func testPressToSpeakKeyCodable() throws {
+        for key in PressToSpeakKey.allCases {
+            let encoded = try JSONEncoder().encode(key)
+            let decoded = try JSONDecoder().decode(PressToSpeakKey.self, from: encoded)
+            XCTAssertEqual(key, decoded)
+        }
+    }
+
+    func testPressToSpeakKeyAllCases() {
+        let allCases = PressToSpeakKey.allCases
+        XCTAssertEqual(allCases.count, 5)
+    }
+
     // MARK: - STTProviderType tests
 
     func testSTTProviderTypeRawValues() {

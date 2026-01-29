@@ -39,7 +39,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         setupIcons()
         setupStatusItem()
         setupHotkey()
-        setupFnKeyMonitor()
+        setupPressKeyMonitor()
         setupAudioPipeline()
 
         NotificationCenter.default.addObserver(
@@ -409,15 +409,15 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         HotkeyManager.shared.registerHotkey()
     }
 
-    // MARK: - Fn key monitor
+    // MARK: - Press-to-speak key monitor
 
-    private func setupFnKeyMonitor() {
-        FnKeyMonitor.shared.onFnPressed = { [weak self] in
+    private func setupPressKeyMonitor() {
+        PressKeyMonitor.shared.onKeyPressed = { [weak self] in
             guard SettingsStore.shared.activationMode == .pressToSpeak else { return }
             self?.startRecording()
         }
 
-        FnKeyMonitor.shared.onFnReleased = { [weak self] in
+        PressKeyMonitor.shared.onKeyReleased = { [weak self] in
             guard SettingsStore.shared.activationMode == .pressToSpeak else { return }
             self?.stopRecording()
         }
@@ -426,10 +426,10 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private func updateMonitoringMode() {
         switch SettingsStore.shared.activationMode {
         case .hotkey:
-            FnKeyMonitor.shared.stop()
+            PressKeyMonitor.shared.stop()
         case .pressToSpeak:
-            setupFnKeyMonitor()
-            FnKeyMonitor.shared.start()
+            setupPressKeyMonitor()
+            PressKeyMonitor.shared.start()
         }
     }
 
@@ -543,7 +543,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func shortcutDisplayString() -> String {
         if SettingsStore.shared.activationMode == .pressToSpeak {
-            return "Fn"
+            return SettingsStore.shared.pressToSpeakKey.displayName
         }
 
         let keys = SettingsStore.shared.shortcutKeys

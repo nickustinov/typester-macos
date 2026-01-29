@@ -14,7 +14,7 @@ Typester lives in your menu bar and lets you dictate text directly into any appl
 
 Features:
 - **Multiple providers** — Choose between Soniox or Deepgram for speech recognition
-- **Press-to-speak** — Hold the Fn key to dictate, release to paste (default mode)
+- **Press-to-speak** — Hold a key to dictate, release to paste (default mode, configurable: Fn, Left/Right ⌘, Left/Right ⌥)
 - **Toggle mode** — Or use a global hotkey to start/stop recording (triple-tap ⌘⌘⌘ or custom shortcut)
 - **Real-time transcription** — Uses streaming APIs for low-latency speech recognition
 - **Multilingual** — Soniox: 60+ languages with hints; Deepgram: auto-detects with multilingual model
@@ -48,9 +48,9 @@ Typester requires two macOS permissions:
 ## Usage
 
 **Press-to-speak mode (default):**
-1. Hold the Fn key
+1. Hold the configured key (Fn by default — changeable in Settings)
 2. Speak — your words are transcribed in real-time
-3. Release Fn — text is pasted into the active field
+3. Release the key — text is pasted into the active field
 
 **Toggle mode:**
 1. Press triple-Cmd (⌘⌘⌘) or your custom hotkey to start
@@ -111,7 +111,7 @@ Sources/
     ├── SettingsView.swift          # SwiftUI settings interface
     ├── OnboardingView.swift        # First-run setup wizard
     ├── HotkeyManager.swift         # Global hotkey registration (Carbon Events)
-    ├── FnKeyMonitor.swift          # Fn key press-to-speak detection (CGEventTap)
+    ├── PressKeyMonitor.swift        # Press-to-speak key detection (CGEventTap)
     ├── AudioRecorder.swift         # AVAudioEngine microphone capture
     ├── STTProvider.swift           # Speech-to-text provider protocol
     ├── STTClientBase.swift         # Base class for STT WebSocket clients
