@@ -317,11 +317,13 @@ struct OnboardingView: View {
             }
         }
 
-        FnKeyMonitor.shared.onFnPressed = {
+        FnKeyMonitor.shared.onFnPressed = { [audioRecorder] in
             DispatchQueue.main.async {
                 isTrying = true
                 tryItText = ""
             }
+            // Start audio immediately - it will buffer while WebSocket connects
+            audioRecorder.startRecording()
             provider.connect()
         }
 
@@ -335,8 +337,8 @@ struct OnboardingView: View {
             }
         }
 
-        provider.onConnected = { [audioRecorder] in
-            audioRecorder.startRecording()
+        provider.onConnected = {
+            Debug.log("Try-it: provider connected")
         }
 
         provider.onFinalized = {
