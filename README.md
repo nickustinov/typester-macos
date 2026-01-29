@@ -1,6 +1,6 @@
 # Typester
 
-A lightweight macOS menu bar app for speech-to-text dictation using [Soniox](https://soniox.com).
+A lightweight macOS menu bar app for speech-to-text dictation using [Soniox](https://soniox.com) or [Deepgram](https://deepgram.com).
 
 ![Demo](Assets/demo.gif)
 
@@ -8,23 +8,24 @@ A lightweight macOS menu bar app for speech-to-text dictation using [Soniox](htt
 
 Typester lives in your menu bar and lets you dictate text directly into any application. Hold a key to speak or toggle recording with a hotkey — your words are automatically typed into the active text field.
 
-**Bring Your Own Key (BYOK)** — Typester connects directly to Soniox using your own API key. No middleman, no subscription, no data collection. You pay only for what you use directly to Soniox.
+**Bring Your Own Key (BYOK)** — Typester connects directly to your chosen speech-to-text provider using your own API key. No middleman, no subscription, no data collection. You pay only for what you use directly to the provider.
 
 Features:
+- **Multiple providers** — Choose between Soniox or Deepgram for speech recognition
 - **Press-to-speak** — Hold the Fn key to dictate, release to paste (default mode)
 - **Toggle mode** — Or use a global hotkey to start/stop recording (triple-tap ⌘⌘⌘ or custom shortcut)
-- **Real-time transcription** — Uses Soniox streaming API for low-latency speech recognition
-- **60+ languages** — Auto-detects language, or select specific languages in the menu
+- **Real-time transcription** — Uses streaming APIs for low-latency speech recognition
+- **Multilingual** — Soniox: 60+ languages with hints; Deepgram: auto-detects with multilingual model
 - **Microphone selection** — Choose your preferred input device from the menu
-- **Custom dictionary** — Add domain-specific words, names, or technical terms to improve accuracy
+- **Custom dictionary** — Add domain-specific words, names, or technical terms (Soniox)
 - **Auto-paste** — Transcribed text is automatically pasted into the active application
-- **Secure API key storage** — Your Soniox API key is stored in the macOS Keychain
+- **Secure API key storage** — Your API keys are stored in the macOS Keychain
 - **Launch at login** — Start automatically when you log in
 
 ## Requirements
 
 - macOS 13 or later
-- [Soniox](https://soniox.com) API key
+- API key from [Soniox](https://soniox.com) or [Deepgram](https://console.deepgram.com)
 
 ## Permissions
 
@@ -39,7 +40,7 @@ Typester requires two macOS permissions:
 1. Download `Typester-x.x.x.dmg` from Releases
 2. Open the DMG and drag Typester to Applications
 3. Launch from Applications — it appears as an icon in your menu bar
-4. Open Settings and enter your Soniox API key
+4. Follow the setup wizard to choose your provider and enter your API key
 5. Grant Microphone and Accessibility permissions when prompted
 
 ## Usage
@@ -54,19 +55,47 @@ Typester requires two macOS permissions:
 2. Speak — your words appear in the active text field
 3. Press the hotkey again to stop
 
-You can switch between modes in Settings. Use the menu bar to select your microphone, preferred languages, or access settings.
+You can switch between modes in Settings. Use the menu bar to select your microphone, preferred languages (Soniox only), or access settings.
 
 ## Building from source
 
+**Debug build:**
 ```bash
-cd typester-macos
 swift build
 swift run
 ```
 
+**Release build (universal binary + DMG):**
+```bash
+./scripts/build-release.sh
+```
+
+This creates a universal binary (arm64 + x86_64), signs it if you have a Developer ID certificate, and packages it into a DMG at `dist/Typester-x.x.x.dmg`.
+
 Requirements for building:
 - Swift 5.9 or later
 - Xcode Command Line Tools
+
+## Development
+
+**Debug logging:**
+```bash
+TYPESTER_DEBUG=1 swift run
+```
+
+**Reset app for fresh testing:**
+```bash
+# Reset permissions
+tccutil reset Microphone com.typester.app
+tccutil reset Accessibility com.typester.app
+
+# Clear saved settings
+defaults delete com.typester.app
+
+# Remove API keys from keychain
+security delete-generic-password -s "com.typester.api" -a "soniox-api-key"
+security delete-generic-password -s "com.typester.api" -a "deepgram-api-key"
+```
 
 ## Architecture
 
@@ -81,13 +110,16 @@ Sources/
 ├── HotkeyManager.swift     # Global hotkey registration (Carbon Events)
 ├── FnKeyMonitor.swift      # Fn key press-to-speak detection (CGEventTap)
 ├── AudioRecorder.swift     # AVAudioEngine microphone capture
-├── SonioxClient.swift      # WebSocket streaming transcription
-└── TextPaster.swift        # Clipboard + simulated Cmd+V paste
+├── STTProvider.swift       # Speech-to-text provider protocol
+├── SonioxClient.swift      # Soniox WebSocket streaming
+├── DeepgramClient.swift    # Deepgram WebSocket streaming
+├── TextPaster.swift        # Clipboard + simulated Cmd+V paste
+└── Debug.swift             # Debug logging utility
 ```
 
 ## Disclaimer
 
-This project is not affiliated with, endorsed by, or sponsored by Soniox. Soniox is a third-party service used for speech recognition.
+This project is not affiliated with, endorsed by, or sponsored by Soniox or Deepgram. These are third-party services used for speech recognition.
 
 ## License
 

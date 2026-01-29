@@ -10,8 +10,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var onboardingWindow: NSWindow?
 
     private let audioRecorder = AudioRecorder()
-    private let sonioxClient = SonioxClient()
     private let textPaster = TextPaster()
+    private var sttProvider: STTProvider!
+
+    private func createSTTProvider() -> STTProvider {
+        switch SettingsStore.shared.sttProvider {
+        case .soniox:
+            return SonioxClient()
+        case .deepgram:
+            return DeepgramClient()
+        }
+    }
 
     private var isRecording = false
     private var accumulatedText = ""
@@ -21,12 +30,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - App lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        sttProvider = createSTTProvider()
         setupIcons()
         setupStatusItem()
         setupHotkey()
         setupFnKeyMonitor()
         setupAudioPipeline()
-        updateMonitoringMode()
 
         NotificationCenter.default.addObserver(
             self,
@@ -35,16 +44,82 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             object: nil
         )
 
-        // Show onboarding if not set up
+        // Show onboarding if not set up, otherwise start monitoring
         if SettingsStore.shared.apiKey == nil {
             showOnboarding()
+        } else {
+            updateMonitoringMode()
         }
     }
 
     @objc private func settingsChanged() {
         HotkeyManager.shared.registerHotkey()
         updateMonitoringMode()
+        updateSTTProvider()
         rebuildMenu()
+    }
+
+    private func updateSTTProvider() {
+        switch SettingsStore.shared.sttProvider {
+        case .soniox:
+            if sttProvider is SonioxClient { return }
+        case .deepgram:
+            if sttProvider is DeepgramClient { return }
+        }
+
+        // Disconnect old provider
+        sttProvider.disconnect()
+
+        // Setup new provider with same callbacks
+        sttProvider = createSTTProvider()
+        setupSTTCallbacks()
+    }
+
+    private func setupSTTCallbacks() {
+        sttProvider.onConnected = {
+            Debug.log("STT connected, buffered audio flushed")
+        }
+
+        sttProvider.onDisconnected = { [weak self] in
+            guard let self = self, self.isRecording else { return }
+            self.isRecording = false
+            self.statusItem.button?.image = self.normalIcon
+            self.rebuildMenu()
+        }
+
+        sttProvider.onTranscript = { [weak self] text, isFinal in
+            if isFinal {
+                self?.accumulatedText += text
+            }
+        }
+
+        sttProvider.onEndpoint = { [weak self] in
+            guard let self = self else { return }
+            let text = self.accumulatedText.trimmingCharacters(in: .whitespaces)
+            if !text.isEmpty {
+                self.textPaster.paste(text + " ")
+                self.accumulatedText = ""
+            }
+        }
+
+        sttProvider.onFinalized = { [weak self] in
+            guard let self = self else { return }
+            let text = self.accumulatedText.trimmingCharacters(in: .whitespaces)
+            if !text.isEmpty {
+                self.textPaster.paste(text + " ")
+                self.accumulatedText = ""
+            }
+            self.sttProvider.disconnect()
+        }
+
+        sttProvider.onError = { [weak self] error in
+            guard let self = self else { return }
+            self.isRecording = false
+            self.statusItem.button?.image = self.normalIcon
+            self.rebuildMenu()
+            self.audioRecorder.stopRecording()
+            self.showError(error)
+        }
     }
 
     // MARK: - Icons
@@ -216,34 +291,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         micMenuItem.submenu = micMenu
         menu.addItem(micMenuItem)
 
-        // Languages submenu
-        let langMenu = NSMenu()
-        let selectedLangs = Set(SettingsStore.shared.languageHints)
+        // Languages submenu (only for Soniox - Deepgram uses auto-detect)
+        if SettingsStore.shared.sttProvider == .soniox {
+            let langMenu = NSMenu()
+            let selectedLangs = Set(SettingsStore.shared.languageHints)
 
-        // Sort: selected languages first, then popular, then rest alphabetically
-        let sortedLanguages = supportedLanguages.sorted { a, b in
-            let aSelected = selectedLangs.contains(a.code)
-            let bSelected = selectedLangs.contains(b.code)
-            if aSelected != bSelected { return aSelected }
-            if a.isPopular != b.isPopular { return a.isPopular }
-            return a.name < b.name
+            // Sort: selected languages first, then popular, then rest alphabetically
+            let sortedLanguages = supportedLanguages.sorted { a, b in
+                let aSelected = selectedLangs.contains(a.code)
+                let bSelected = selectedLangs.contains(b.code)
+                if aSelected != bSelected { return aSelected }
+                if a.isPopular != b.isPopular { return a.isPopular }
+                return a.name < b.name
+            }
+
+            for lang in sortedLanguages {
+                let item = NSMenuItem(
+                    title: "\(lang.flag) \(lang.name)",
+                    action: #selector(toggleLanguage(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = lang.code
+                item.state = selectedLangs.contains(lang.code) ? .on : .off
+                langMenu.addItem(item)
+            }
+
+            let langMenuItem = NSMenuItem(title: "Languages", action: nil, keyEquivalent: "")
+            langMenuItem.submenu = langMenu
+            menu.addItem(langMenuItem)
         }
-
-        for lang in sortedLanguages {
-            let item = NSMenuItem(
-                title: "\(lang.flag) \(lang.name)",
-                action: #selector(toggleLanguage(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = lang.code
-            item.state = selectedLangs.contains(lang.code) ? .on : .off
-            langMenu.addItem(item)
-        }
-
-        let langMenuItem = NSMenuItem(title: "Languages", action: nil, keyEquivalent: "")
-        langMenuItem.submenu = langMenu
-        menu.addItem(langMenuItem)
 
         menu.addItem(.separator())
 
@@ -400,6 +477,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case .hotkey:
             FnKeyMonitor.shared.stop()
         case .pressToSpeak:
+            setupFnKeyMonitor()
             FnKeyMonitor.shared.start()
         }
     }
@@ -408,58 +486,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     private func setupAudioPipeline() {
         audioRecorder.onAudioBuffer = { [weak self] data in
-            self?.sonioxClient.sendAudio(data)
+            self?.sttProvider.sendAudio(data)
         }
 
         audioRecorder.onError = { [weak self] error in
             self?.stopRecording()
         }
 
-        sonioxClient.onConnected = { [weak self] in
-            self?.audioRecorder.startRecording()
-        }
-
-        sonioxClient.onDisconnected = { [weak self] in
-            // Reset UI if still in recording state (connection dropped unexpectedly)
-            guard let self = self, self.isRecording else { return }
-            self.isRecording = false
-            self.statusItem.button?.image = self.normalIcon
-            self.rebuildMenu()
-        }
-
-        sonioxClient.onTranscript = { [weak self] text, isFinal in
-            if isFinal {
-                self?.accumulatedText += text
-            }
-        }
-
-        sonioxClient.onEndpoint = { [weak self] in
-            guard let self = self else { return }
-            let text = self.accumulatedText.trimmingCharacters(in: .whitespaces)
-            if !text.isEmpty {
-                self.textPaster.paste(text + " ")
-                self.accumulatedText = ""
-            }
-        }
-
-        sonioxClient.onFinalized = { [weak self] in
-            guard let self = self else { return }
-            let text = self.accumulatedText.trimmingCharacters(in: .whitespaces)
-            if !text.isEmpty {
-                self.textPaster.paste(text + " ")
-                self.accumulatedText = ""
-            }
-            self.sonioxClient.disconnect()
-        }
-
-        sonioxClient.onError = { [weak self] error in
-            guard let self = self else { return }
-            self.isRecording = false
-            self.statusItem.button?.image = self.normalIcon
-            self.rebuildMenu()
-            self.audioRecorder.stopRecording()
-            self.showError(error)
-        }
+        setupSTTCallbacks()
     }
 
     private func showError(_ message: String) {
@@ -495,29 +529,56 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     private func startRecording() {
-        guard !isRecording else { return }
-        guard SettingsStore.shared.apiKey != nil else {
+        Debug.log("startRecording() called, isRecording=\(isRecording)")
+        guard !isRecording else {
+            Debug.log("startRecording() SKIPPED - already recording")
+            return
+        }
+
+        let hasApiKey: Bool
+        switch SettingsStore.shared.sttProvider {
+        case .soniox:
+            hasApiKey = SettingsStore.shared.apiKey != nil
+        case .deepgram:
+            hasApiKey = SettingsStore.shared.deepgramApiKey != nil
+        }
+
+        guard hasApiKey else {
+            Debug.log("startRecording() SKIPPED - no API key for \(SettingsStore.shared.sttProvider)")
             openSettings()
             return
         }
 
+        Debug.log("Starting recording...")
         isRecording = true
         statusItem.button?.image = recordingIcon
         accumulatedText = ""
         rebuildMenu()
 
-        sonioxClient.connect()
+        // Start audio immediately - it will buffer while WebSocket connects
+        audioRecorder.startRecording()
+        sttProvider.connect()
     }
 
     private func stopRecording() {
-        guard isRecording else { return }
+        Debug.log("stopRecording() called, isRecording=\(isRecording)")
+        guard isRecording else {
+            Debug.log("stopRecording() SKIPPED - not recording")
+            return
+        }
 
+        Debug.log("Stopping recording...")
         isRecording = false
         statusItem.button?.image = normalIcon
         rebuildMenu()
 
         audioRecorder.stopRecording()
-        sonioxClient.sendFinalize()
+
+        // Small delay to let provider process last audio chunks before finalizing
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            Debug.log("Sending finalize after delay")
+            self?.sttProvider.sendFinalize()
+        }
     }
 
     // MARK: - Shortcut display
@@ -653,6 +714,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let onboardingView = OnboardingView {
                 self.onboardingWindow?.close()
                 self.onboardingWindow = nil
+                self.updateMonitoringMode()
             }
             let hostingController = NSHostingController(rootView: onboardingView)
             let window = NSWindow(contentViewController: hostingController)

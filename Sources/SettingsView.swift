@@ -5,8 +5,10 @@ import AppKit
 
 struct SettingsView: View {
     @ObservedObject private var settings = SettingsStore.shared
-    @State private var apiKeyInput: String = ""
-    @State private var showApiKey = false
+    @State private var sonioxKeyInput: String = ""
+    @State private var deepgramKeyInput: String = ""
+    @State private var showSonioxKey = false
+    @State private var showDeepgramKey = false
     @State private var micPermissionGranted = false
     @State private var accessibilityGranted = false
     @State private var showingAddTerm = false
@@ -18,55 +20,45 @@ struct SettingsView: View {
                     Toggle("Open at login", isOn: $settings.launchAtLogin)
                 }
 
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            ZStack {
-                                if showApiKey {
-                                    SingleLineTextField(text: $apiKeyInput)
-                                } else {
-                                    SecureField("", text: $apiKeyInput)
-                                        .textFieldStyle(.plain)
-                                }
-                            }
-
-                            Button {
-                                showApiKey.toggle()
-                            } label: {
-                                Image(systemName: showApiKey ? "eye.slash" : "eye")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.borderless)
-
-                            if settings.apiKey != nil && apiKeyInput == settings.apiKey {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.green)
-                            }
-                        }
-
-                        if apiKeyInput != (settings.apiKey ?? "") {
-                            HStack {
-                                Spacer()
-                                Button("Cancel") {
-                                    apiKeyInput = settings.apiKey ?? ""
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.small)
-
-                                Button("Save") {
-                                    settings.apiKey = apiKeyInput.isEmpty ? nil : apiKeyInput
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.small)
-                            }
+                Section("Speech-to-text provider") {
+                    Picker("Provider", selection: $settings.sttProvider) {
+                        ForEach(STTProviderType.allCases, id: \.self) { provider in
+                            Text(provider.displayName).tag(provider)
                         }
                     }
-                } header: {
-                    HStack {
-                        Text("Soniox API key")
-                        Spacer()
-                        Link("Get key at soniox.com", destination: URL(string: "https://soniox.com")!)
-                            .font(.caption)
+                }
+
+                if settings.sttProvider == .soniox {
+                    Section {
+                        apiKeyField(
+                            key: $sonioxKeyInput,
+                            showKey: $showSonioxKey,
+                            savedKey: settings.apiKey,
+                            onSave: { settings.apiKey = $0 }
+                        )
+                    } header: {
+                        HStack {
+                            Text("Soniox API key")
+                            Spacer()
+                            Link("Get key", destination: URL(string: "https://soniox.com")!)
+                                .font(.caption)
+                        }
+                    }
+                } else {
+                    Section {
+                        apiKeyField(
+                            key: $deepgramKeyInput,
+                            showKey: $showDeepgramKey,
+                            savedKey: settings.deepgramApiKey,
+                            onSave: { settings.deepgramApiKey = $0 }
+                        )
+                    } header: {
+                        HStack {
+                            Text("Deepgram API key")
+                            Spacer()
+                            Link("Get key", destination: URL(string: "https://console.deepgram.com")!)
+                                .font(.caption)
+                        }
                     }
                 }
 
@@ -194,7 +186,10 @@ struct SettingsView: View {
         }
         .onAppear {
             if let key = settings.apiKey {
-                apiKeyInput = key
+                sonioxKeyInput = key
+            }
+            if let key = settings.deepgramApiKey {
+                deepgramKeyInput = key
             }
             checkPermissions()
             settings.syncLaunchAtLoginStatus()
@@ -207,6 +202,57 @@ struct SettingsView: View {
     private func checkPermissions() {
         checkMicPermission()
         accessibilityGranted = TextPaster.checkAccessibilityPermission()
+    }
+
+    @ViewBuilder
+    private func apiKeyField(
+        key: Binding<String>,
+        showKey: Binding<Bool>,
+        savedKey: String?,
+        onSave: @escaping (String?) -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                ZStack {
+                    if showKey.wrappedValue {
+                        SingleLineTextField(text: key)
+                    } else {
+                        SecureField("", text: key)
+                            .textFieldStyle(.plain)
+                    }
+                }
+
+                Button {
+                    showKey.wrappedValue.toggle()
+                } label: {
+                    Image(systemName: showKey.wrappedValue ? "eye.slash" : "eye")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+
+                if savedKey != nil && key.wrappedValue == savedKey {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+            }
+
+            if key.wrappedValue != (savedKey ?? "") {
+                HStack {
+                    Spacer()
+                    Button("Cancel") {
+                        key.wrappedValue = savedKey ?? ""
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+
+                    Button("Save") {
+                        onSave(key.wrappedValue.isEmpty ? nil : key.wrappedValue)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                }
+            }
+        }
     }
 
     private var shortcutDescription: String {

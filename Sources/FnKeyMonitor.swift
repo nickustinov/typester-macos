@@ -11,7 +11,7 @@ class FnKeyMonitor {
     private var isFnDown = false
     private var isActivated = false
     private var activationTimer: DispatchWorkItem?
-    private let activationDelay: TimeInterval = 0.15
+    private let activationDelay: TimeInterval = 0.05
 
     private init() {}
 
@@ -80,22 +80,29 @@ class FnKeyMonitor {
         let fnNowDown = modifiers.contains(.function)
 
         if fnNowDown && !isFnDown {
+            Debug.log("Fn key DOWN detected")
             isFnDown = true
             activationTimer?.cancel()
             let timer = DispatchWorkItem { [weak self] in
-                guard let self = self, self.isFnDown else { return }
+                guard let self = self, self.isFnDown else {
+                    Debug.log("Fn activation cancelled (key released before delay)")
+                    return
+                }
+                Debug.log("Fn ACTIVATED after \(self.activationDelay)s delay -> calling onFnPressed")
                 self.isActivated = true
                 self.onFnPressed?()
             }
             activationTimer = timer
             DispatchQueue.main.asyncAfter(deadline: .now() + activationDelay, execute: timer)
         } else if !fnNowDown && isFnDown {
+            Debug.log("Fn key UP detected, isActivated=\(isActivated)")
             isFnDown = false
             activationTimer?.cancel()
             activationTimer = nil
             if isActivated {
                 isActivated = false
                 DispatchQueue.main.async { [weak self] in
+                    Debug.log("Fn DEACTIVATED -> calling onFnReleased")
                     self?.onFnReleased?()
                 }
             }

@@ -51,13 +51,22 @@ class SettingsStore: ObservableObject {
         }
     }
 
+    @Published var sttProvider: STTProviderType = .soniox {
+        didSet {
+            saveSTTProvider()
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        }
+    }
+
     private let shortcutKeysKey = "shortcutKeys"
+    private let sttProviderKey = "sttProvider"
     private let activationModeKey = "activationMode"
     private let languageHintsKey = "languageHints"
     private let selectedMicrophoneKey = "selectedMicrophone"
     private let dictionaryTermsKey = "dictionaryTerms"
     private let keychainService = "com.typester.api"
-    private let keychainAccount = "soniox-api-key"
+    private let sonioxKeychainAccount = "soniox-api-key"
+    private let deepgramKeychainAccount = "deepgram-api-key"
 
     private init() {
         loadShortcutKeys()
@@ -65,6 +74,7 @@ class SettingsStore: ObservableObject {
         loadLanguageHints()
         loadSelectedMicrophone()
         loadDictionaryTerms()
+        loadSTTProvider()
         syncLaunchAtLoginStatus()
     }
 
@@ -127,25 +137,51 @@ class SettingsStore: ObservableObject {
         UserDefaults.standard.set(dictionaryTerms, forKey: dictionaryTermsKey)
     }
 
-    // MARK: - API key (Keychain)
+    private func loadSTTProvider() {
+        guard let rawValue = UserDefaults.standard.string(forKey: sttProviderKey),
+              let provider = STTProviderType(rawValue: rawValue) else {
+            return
+        }
+        sttProvider = provider
+    }
 
+    private func saveSTTProvider() {
+        UserDefaults.standard.set(sttProvider.rawValue, forKey: sttProviderKey)
+    }
+
+    // MARK: - API keys (Keychain)
+
+    // Soniox API key
     var apiKey: String? {
-        get { getKeychainItem() }
+        get { getKeychainItem(account: sonioxKeychainAccount) }
         set {
             if let value = newValue {
-                setKeychainItem(value)
+                setKeychainItem(value, account: sonioxKeychainAccount)
             } else {
-                deleteKeychainItem()
+                deleteKeychainItem(account: sonioxKeychainAccount)
             }
             objectWillChange.send()
         }
     }
 
-    private func getKeychainItem() -> String? {
+    // Deepgram API key
+    var deepgramApiKey: String? {
+        get { getKeychainItem(account: deepgramKeychainAccount) }
+        set {
+            if let value = newValue {
+                setKeychainItem(value, account: deepgramKeychainAccount)
+            } else {
+                deleteKeychainItem(account: deepgramKeychainAccount)
+            }
+            objectWillChange.send()
+        }
+    }
+
+    private func getKeychainItem(account: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
+            kSecAttrAccount as String: account,
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne
         ]
@@ -162,15 +198,15 @@ class SettingsStore: ObservableObject {
         return string
     }
 
-    private func setKeychainItem(_ value: String) {
-        deleteKeychainItem()
+    private func setKeychainItem(_ value: String, account: String) {
+        deleteKeychainItem(account: account)
 
         guard let data = value.data(using: .utf8) else { return }
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount,
+            kSecAttrAccount as String: account,
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
         ]
@@ -178,11 +214,11 @@ class SettingsStore: ObservableObject {
         SecItemAdd(query as CFDictionary, nil)
     }
 
-    private func deleteKeychainItem() {
+    private func deleteKeychainItem(account: String) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
-            kSecAttrAccount as String: keychainAccount
+            kSecAttrAccount as String: account
         ]
 
         SecItemDelete(query as CFDictionary)

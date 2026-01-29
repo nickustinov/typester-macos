@@ -1,9 +1,22 @@
 import Foundation
 
-class SonioxClient: NSObject {
+class SonioxClient: NSObject, STTProvider {
+    private static let session: URLSession = {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 10
+        config.timeoutIntervalForResource = 30
+        return URLSession(configuration: config)
+    }()
+
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConfigSent = false
     private var isIntentionalDisconnect = false
+    private var isConnecting = false
+    private var audioBuffer: [Data] = []
+    private var pendingFinalize = false
+    private var connectStartTime: Date?
+
+    var isConnected: Bool { isConfigSent }
 
     // MARK: - Callbacks
 
@@ -17,18 +30,28 @@ class SonioxClient: NSObject {
     // MARK: - Connection
 
     func connect() {
+        Debug.log("connect() called, isConnecting=\(isConnecting)")
+        guard !isConnecting else {
+            Debug.log("connect() SKIPPED - already connecting")
+            return
+        }
+
         guard let apiKey = SettingsStore.shared.apiKey, !apiKey.isEmpty else {
+            Debug.log("connect() FAILED - no API key")
             onError?("API key not configured")
             return
         }
 
         disconnect()
+        isConnecting = true
         isConfigSent = false
         isIntentionalDisconnect = false
+        pendingFinalize = false
 
+        Debug.log("Opening WebSocket connection...")
+        connectStartTime = Date()
         let url = URL(string: "wss://stt-rt.soniox.com/transcribe-websocket")!
-        let session = URLSession(configuration: .default)
-        webSocketTask = session.webSocketTask(with: url)
+        webSocketTask = Self.session.webSocketTask(with: url)
         webSocketTask?.resume()
 
         sendConfiguration()
@@ -36,7 +59,10 @@ class SonioxClient: NSObject {
     }
 
     func disconnect() {
+        Debug.log("disconnect() called, buffered chunks: \(audioBuffer.count)")
         isIntentionalDisconnect = true
+        isConnecting = false
+        audioBuffer.removeAll()
         webSocketTask?.cancel(with: .normalClosure, reason: nil)
         webSocketTask = nil
         isConfigSent = false
@@ -45,13 +71,29 @@ class SonioxClient: NSObject {
     // MARK: - Audio streaming
 
     func sendAudio(_ data: Data) {
-        guard isConfigSent else { return }
-        webSocketTask?.send(.data(data)) { _ in }
+        if isConfigSent {
+            webSocketTask?.send(.data(data)) { _ in }
+        } else {
+            // Buffer audio while connecting
+            audioBuffer.append(data)
+        }
     }
 
     func sendFinalize() {
-        let message = "{\"type\":\"finalize\"}"
-        webSocketTask?.send(.string(message)) { _ in }
+        Debug.log("sendFinalize() called, isConnected=\(isConnected), buffered=\(audioBuffer.count)")
+        if isConnected {
+            let message = "{\"type\":\"finalize\"}"
+            webSocketTask?.send(.string(message)) { _ in }
+        } else if audioBuffer.isEmpty {
+            // No audio buffered, just disconnect
+            Debug.log("No audio buffered, disconnecting")
+            disconnect()
+            onFinalized?()
+        } else {
+            // Audio buffered but not connected yet - wait for connection
+            Debug.log("Waiting for connection to send \(audioBuffer.count) buffered chunks")
+            pendingFinalize = true
+        }
     }
 
     // MARK: - Private
@@ -84,13 +126,37 @@ class SonioxClient: NSObject {
             return
         }
 
+        Debug.log("Sending config to Soniox...")
         webSocketTask?.send(.string(jsonString)) { [weak self] error in
             DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.isConnecting = false
                 if let error = error {
-                    self?.onError?("Failed to send config: \(error.localizedDescription)")
+                    // Don't show error if we intentionally disconnected
+                    if !self.isIntentionalDisconnect {
+                        Debug.log("Config send FAILED: \(error.localizedDescription)")
+                        self.onError?("Failed to send config: \(error.localizedDescription)")
+                    } else {
+                        Debug.log("Config send cancelled (intentional disconnect)")
+                    }
                 } else {
-                    self?.isConfigSent = true
-                    self?.onConnected?()
+                    let elapsed = self.connectStartTime.map { Date().timeIntervalSince($0) } ?? 0
+                    Debug.log("Config sent OK in \(String(format: "%.2f", elapsed))s, flushing \(self.audioBuffer.count) buffered chunks")
+                    self.isConfigSent = true
+                    // Flush buffered audio
+                    for chunk in self.audioBuffer {
+                        self.webSocketTask?.send(.data(chunk)) { _ in }
+                    }
+                    self.audioBuffer.removeAll()
+                    self.onConnected?()
+
+                    // If finalize was requested while connecting, send it now
+                    if self.pendingFinalize {
+                        Debug.log("Sending pending finalize")
+                        self.pendingFinalize = false
+                        let message = "{\"type\":\"finalize\"}"
+                        self.webSocketTask?.send(.string(message)) { _ in }
+                    }
                 }
             }
         }
@@ -107,7 +173,8 @@ class SonioxClient: NSObject {
                 }
                 self.receiveMessage()
 
-            case .failure:
+            case .failure(let error):
+                Debug.log("WebSocket receive FAILED: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.onDisconnected?()
                 }

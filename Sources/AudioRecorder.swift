@@ -33,9 +33,14 @@ class AudioRecorder {
     // MARK: - Recording
 
     func startRecording() {
-        guard !isRecording else { return }
+        Debug.log("startRecording() called, isRecording=\(isRecording)")
+        guard !isRecording else {
+            Debug.log("startRecording() SKIPPED - already recording")
+            return
+        }
 
         requestPermission { [weak self] granted in
+            Debug.log("Mic permission: \(granted)")
             guard granted else {
                 self?.onError?("Microphone permission denied")
                 return
@@ -45,12 +50,18 @@ class AudioRecorder {
     }
 
     func stopRecording() {
-        guard isRecording else { return }
+        Debug.log("stopRecording() called, isRecording=\(isRecording)")
+        guard isRecording else {
+            Debug.log("stopRecording() SKIPPED - not recording")
+            return
+        }
 
+        Debug.log("Stopping audio engine...")
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
         isRecording = false
+        Debug.log("Audio engine stopped")
     }
 
     // MARK: - Private
@@ -127,9 +138,12 @@ class AudioRecorder {
         }
 
         do {
+            Debug.log("Starting audio engine...")
             try audioEngine.start()
             isRecording = true
+            Debug.log("Audio engine started successfully")
         } catch {
+            Debug.log("Audio engine FAILED: \(error.localizedDescription)")
             onError?("Failed to start audio engine: \(error.localizedDescription)")
         }
     }
