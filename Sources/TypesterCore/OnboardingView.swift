@@ -7,12 +7,7 @@ struct OnboardingView: View {
     @State private var currentStep = 1
     @State private var micGranted = false
     @State private var accessibilityGranted = false
-    @State private var tryItText = ""
-    @State private var isTrying = false
     @FocusState private var isApiKeyFocused: Bool
-
-    private let audioRecorder = AudioRecorder()
-    @State private var sttProvider: STTProvider?
 
     var onComplete: () -> Void
 
@@ -21,7 +16,6 @@ struct OnboardingView: View {
         case 1: return !apiKeyInput.isEmpty
         case 2: return micGranted
         case 3: return accessibilityGranted
-        case 4: return true
         default: return true
         }
     }
@@ -39,101 +33,103 @@ struct OnboardingView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if currentStep < 4 {
-                // Header
-                VStack(spacing: 12) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.blue)
+            // Header
+            VStack(spacing: 12) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.blue)
 
-                    Text("Welcome to Typester")
-                        .font(.title.bold())
+                Text("Welcome to Typester")
+                    .font(.title.bold())
 
-                    Text("Dictate text anywhere on your Mac")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
+                Text("Dictate text anywhere on your Mac")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 32)
+            .padding(.bottom, 24)
+
+            Divider()
+
+            // Steps
+            VStack(spacing: 0) {
+                stepView(
+                    number: 1,
+                    title: "Enter your API key",
+                    titleLink: settings.sttProvider == .deepgram
+                        ? ("Get key", URL(string: "https://console.deepgram.com")!)
+                        : ("Get key", URL(string: "https://soniox.com")!),
+                    description: "You pay the provider directly for usage — no middleman, no subscription.",
+                    isActive: currentStep == 1,
+                    isComplete: hasApiKey
+                ) {
+                    providerAndApiKeyContent
                 }
-                .padding(.top, 32)
-                .padding(.bottom, 24)
 
+                Divider().padding(.leading, 56)
+
+                stepView(
+                    number: 2,
+                    title: "Grant microphone access",
+                    description: "Typester needs to hear you speak to transcribe your voice to text.",
+                    isActive: currentStep == 2,
+                    isComplete: micGranted
+                ) {
+                    microphoneStepContent
+                }
+
+                Divider().padding(.leading, 56)
+
+                stepView(
+                    number: 3,
+                    title: "Grant accessibility access",
+                    description: "Typester needs this to type text into other apps by simulating keyboard input.",
+                    isActive: currentStep == 3,
+                    isComplete: accessibilityGranted
+                ) {
+                    accessibilityStepContent
+                }
+            }
+            .padding(.vertical, 8)
+
+            if permissionsComplete {
                 Divider()
 
-                // Steps
-                VStack(spacing: 0) {
-                    stepView(
-                        number: 1,
-                        title: "Enter your API key",
-                        titleLink: settings.sttProvider == .deepgram
-                            ? ("Get key", URL(string: "https://console.deepgram.com")!)
-                            : ("Get key", URL(string: "https://soniox.com")!),
-                        description: "You pay the provider directly for usage — no middleman, no subscription.",
-                        isActive: currentStep == 1,
-                        isComplete: hasApiKey
-                    ) {
-                        providerAndApiKeyContent
-                    }
+                readyView
+            }
 
-                    Divider().padding(.leading, 56)
+            Spacer()
 
-                    stepView(
-                        number: 2,
-                        title: "Grant microphone access",
-                        description: "Typester needs to hear you speak to transcribe your voice to text.",
-                        isActive: currentStep == 2,
-                        isComplete: micGranted
-                    ) {
-                        microphoneStepContent
-                    }
+            Divider()
 
-                    Divider().padding(.leading, 56)
-
-                    stepView(
-                        number: 3,
-                        title: "Grant accessibility access",
-                        description: "Typester needs this to type text into other apps by simulating keyboard input.",
-                        isActive: currentStep == 3,
-                        isComplete: accessibilityGranted
-                    ) {
-                        accessibilityStepContent
-                    }
-                }
-                .padding(.vertical, 8)
-
+            // Footer
+            HStack {
                 Spacer()
 
-                Divider()
-
-                // Footer
-                HStack {
-                    Spacer()
-
-                    if permissionsComplete {
-                        Button("Next") {
-                            withAnimation { currentStep = 4 }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    } else if canContinue && currentStep < 3 {
-                        Button("Continue") {
-                            if currentStep == 1 && !apiKeyInput.isEmpty {
-                                switch settings.sttProvider {
-                                case .soniox:
-                                    settings.apiKey = apiKeyInput
-                                case .deepgram:
-                                    settings.deepgramApiKey = apiKeyInput
-                                }
-                            }
-                            withAnimation { currentStep += 1 }
-                        }
-                        .buttonStyle(.borderedProminent)
+                if permissionsComplete {
+                    Button("Start using Typester") {
+                        onComplete()
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                } else if canContinue && currentStep < 3 {
+                    Button("Continue") {
+                        if currentStep == 1 && !apiKeyInput.isEmpty {
+                            switch settings.sttProvider {
+                            case .soniox:
+                                settings.apiKey = apiKeyInput
+                            case .deepgram:
+                                settings.deepgramApiKey = apiKeyInput
+                            }
+                        }
+                        withAnimation { currentStep += 1 }
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .padding(20)
-            } else {
-                // How to use screen
-                howToUseView
             }
+            .padding(20)
         }
-        .frame(width: 520, height: 540)
+        .frame(width: 520, height: permissionsComplete ? 620 : 540)
         .onAppear {
             checkPermissions()
             loadApiKeyForProvider()
@@ -218,140 +214,35 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - How to use
+    // MARK: - Ready view
 
     @ViewBuilder
-    private var howToUseView: some View {
-        VStack(spacing: 0) {
-            Spacer()
+    private var readyView: some View {
+        HStack(alignment: .top, spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: 32, height: 32)
 
-            VStack(spacing: 24) {
-                // Fn key mockup
-                ZStack {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(white: 0.15))
-                        .frame(width: 80, height: 80)
-                        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(LinearGradient(
-                            colors: [Color(white: 0.25), Color(white: 0.18)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        ))
-                        .frame(width: 72, height: 72)
-
-                    Text("fn")
-                        .font(.system(size: 28, weight: .medium, design: .rounded))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(spacing: 12) {
-                    Text("Hold Fn to dictate")
-                        .font(.title2.bold())
-
-                    Text("Press and hold the Fn key, speak, then release.\nYour words will appear wherever your cursor is.")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // Try it area
-                VStack(spacing: 8) {
-                    Text(tryItText.isEmpty ? "Give it a try..." : tryItText)
-                        .font(.title3)
-                        .foregroundStyle(tryItText.isEmpty ? .tertiary : .primary)
-                        .multilineTextAlignment(.center)
-                        .frame(minHeight: 60)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.primary.opacity(0.05))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(isTrying ? Color.blue : Color.clear, lineWidth: 2)
-                        )
-                }
-                .padding(.top, 16)
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
             }
-            .padding(.horizontal, 40)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("You're all set!")
+                    .font(.headline)
+
+                Text("Hold the **Fn** key and speak — your words will appear wherever your cursor is. Release to stop.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             Spacer()
-
-            Divider()
-
-            HStack {
-                Spacer()
-
-                Button("Start using Typester") {
-                    stopTryIt()
-                    onComplete()
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-            }
-            .padding(20)
         }
-        .onAppear {
-            setupTryIt()
-        }
-    }
-
-    private func setupTryIt() {
-        // Create provider based on current selection
-        let provider: STTProvider = settings.sttProvider == .deepgram ? DeepgramClient() : SonioxClient()
-        sttProvider = provider
-
-        audioRecorder.onAudioBuffer = { data in
-            provider.sendAudio(data)
-        }
-
-        provider.onTranscript = { text, isFinal in
-            DispatchQueue.main.async {
-                if isFinal {
-                    tryItText += text
-                }
-            }
-        }
-
-        PressKeyMonitor.shared.onKeyPressed = { [audioRecorder] in
-            DispatchQueue.main.async {
-                isTrying = true
-                tryItText = ""
-            }
-            // Start audio immediately - it will buffer while WebSocket connects
-            audioRecorder.startRecording()
-            provider.connect()
-        }
-
-        PressKeyMonitor.shared.onKeyReleased = { [audioRecorder] in
-            audioRecorder.stopRecording()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                provider.sendFinalize()
-            }
-            DispatchQueue.main.async {
-                isTrying = false
-            }
-        }
-
-        provider.onConnected = {
-            Debug.log("Try-it: provider connected")
-        }
-
-        provider.onFinalized = {
-            provider.disconnect()
-        }
-
-        PressKeyMonitor.shared.start()
-    }
-
-    private func stopTryIt() {
-        PressKeyMonitor.shared.stop()
-        audioRecorder.stopRecording()
-        sttProvider?.disconnect()
+        .padding(.horizontal, 24)
+        .padding(.vertical, 14)
     }
 
     // MARK: - Step content
