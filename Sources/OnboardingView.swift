@@ -137,6 +137,9 @@ struct OnboardingView: View {
         .onAppear {
             checkPermissions()
             loadApiKeyForProvider()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                isApiKeyFocused = true
+            }
         }
         .onChange(of: settings.sttProvider) { _ in
             loadApiKeyForProvider()
@@ -353,15 +356,16 @@ struct OnboardingView: View {
 
     @ViewBuilder
     private var providerAndApiKeyContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        HStack(spacing: 8) {
             Picker("Provider", selection: $settings.sttProvider) {
                 ForEach(STTProviderType.allCases, id: \.self) { provider in
                     Text(provider.displayName).tag(provider)
                 }
             }
             .labelsHidden()
+            .fixedSize()
 
-            SecureField("Paste your \(settings.sttProvider.displayName) API key", text: $apiKeyInput)
+            SecureField("Paste your API key", text: $apiKeyInput)
                 .textFieldStyle(.roundedBorder)
                 .focused($isApiKeyFocused)
         }
