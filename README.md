@@ -6,6 +6,8 @@ A lightweight macOS menu bar app for speech-to-text dictation using [Soniox](htt
 
 Typester lives in your menu bar and lets you dictate text directly into any application. Press a hotkey to start recording, speak, and your words are automatically typed into the active text field.
 
+**Bring Your Own Key (BYOK)** — Typester connects directly to Soniox using your own API key. No middleman, no subscription, no data collection. You pay only for what you use directly to Soniox.
+
 Features:
 - **Real-time transcription** — Uses Soniox streaming API for low-latency speech recognition
 - **Auto-paste** — Transcribed text is automatically pasted into the active application
