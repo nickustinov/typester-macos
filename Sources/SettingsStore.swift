@@ -26,12 +26,21 @@ class SettingsStore: ObservableObject {
         }
     }
 
+    @Published var activationMode: ActivationMode = .pressToSpeak {
+        didSet {
+            saveActivationMode()
+            NotificationCenter.default.post(name: .settingsChanged, object: nil)
+        }
+    }
+
     private let shortcutKeysKey = "shortcutKeys"
+    private let activationModeKey = "activationMode"
     private let keychainService = "com.typester.api"
     private let keychainAccount = "soniox-api-key"
 
     private init() {
         loadShortcutKeys()
+        loadActivationMode()
         syncLaunchAtLoginStatus()
     }
 
@@ -52,6 +61,18 @@ class SettingsStore: ObservableObject {
     private func saveShortcutKeys() {
         guard let data = try? JSONEncoder().encode(shortcutKeys) else { return }
         UserDefaults.standard.set(data, forKey: shortcutKeysKey)
+    }
+
+    private func loadActivationMode() {
+        guard let rawValue = UserDefaults.standard.string(forKey: activationModeKey),
+              let mode = ActivationMode(rawValue: rawValue) else {
+            return
+        }
+        activationMode = mode
+    }
+
+    private func saveActivationMode() {
+        UserDefaults.standard.set(activationMode.rawValue, forKey: activationModeKey)
     }
 
     // MARK: - API key (Keychain)

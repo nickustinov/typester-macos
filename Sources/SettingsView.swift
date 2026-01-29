@@ -69,17 +69,25 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Hotkey") {
-                    ShortcutRecorderView(
-                        shortcut: Binding(
-                            get: { shortcutDescription },
-                            set: { _ in }
-                        ),
-                        shortcutKeys: Binding(
-                            get: { settings.shortcutKeys },
-                            set: { if let keys = $0 { settings.shortcutKeys = keys } }
+                Section("Activation") {
+                    Picker("Mode", selection: $settings.activationMode) {
+                        Text("Hotkey (toggle)").tag(ActivationMode.hotkey)
+                        Text("Fn key (hold to speak)").tag(ActivationMode.pressToSpeak)
+                    }
+                    .pickerStyle(.radioGroup)
+
+                    if settings.activationMode == .hotkey {
+                        ShortcutRecorderView(
+                            shortcut: Binding(
+                                get: { shortcutDescription },
+                                set: { _ in }
+                            ),
+                            shortcutKeys: Binding(
+                                get: { settings.shortcutKeys },
+                                set: { if let keys = $0 { settings.shortcutKeys = keys } }
+                            )
                         )
-                    )
+                    }
                 }
 
                 Section("Permissions") {

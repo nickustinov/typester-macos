@@ -48,8 +48,9 @@ class SonioxClient: NSObject {
         webSocketTask?.send(.data(data)) { _ in }
     }
 
-    func finishAudio() {
-        webSocketTask?.send(.data(Data())) { _ in }
+    func sendFinalize() {
+        let message = "{\"type\":\"finalize\"}"
+        webSocketTask?.send(.string(message)) { _ in }
     }
 
     // MARK: - Private
@@ -95,12 +96,8 @@ class SonioxClient: NSObject {
                 }
                 self.receiveMessage()
 
-            case .failure(let error):
+            case .failure:
                 DispatchQueue.main.async {
-                    // Don't report error if we intentionally disconnected
-                    if !self.isIntentionalDisconnect {
-                        self.onError?("Connection error: \(error.localizedDescription)")
-                    }
                     self.onDisconnected?()
                 }
             }
@@ -137,13 +134,15 @@ class SonioxClient: NSObject {
             for token in tokens {
                 guard let tokenText = token["text"] as? String else { continue }
 
-                if tokenText == "<end>" {
+                if tokenText == "<end>" || tokenText == "<fin>" {
                     onEndpoint?()
                     continue
                 }
 
                 let isFinal = token["is_final"] as? Bool ?? false
-                onTranscript?(tokenText, isFinal)
+                if isFinal {
+                    onTranscript?(tokenText, true)
+                }
             }
         }
 

@@ -50,6 +50,8 @@ class HotkeyManager {
     }
 
     private func handleHotkey() {
+        guard SettingsStore.shared.activationMode == .hotkey else { return }
+
         DispatchQueue.main.async { [weak self] in
             self?.onHotkeyTriggered?()
         }

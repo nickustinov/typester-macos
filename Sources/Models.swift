@@ -1,6 +1,11 @@
 import Cocoa
 
-let appVersion = "1.0.0"
+let appVersion = "1.1.0"
+
+enum ActivationMode: String, Codable, CaseIterable {
+    case hotkey = "hotkey"
+    case pressToSpeak = "pressToSpeak"
+}
 let githubURL = "https://github.com/nickustinov/typester-macos"
 
 struct ShortcutKeys: Codable, Equatable {

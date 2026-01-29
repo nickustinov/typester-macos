@@ -22,7 +22,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         setupIcons()
         setupStatusItem()
         setupHotkey()
+        setupFnKeyMonitor()
         setupAudioPipeline()
+        updateMonitoringMode()
 
         NotificationCenter.default.addObserver(
             self,
@@ -39,6 +41,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     @objc private func settingsChanged() {
         HotkeyManager.shared.registerHotkey()
+        updateMonitoringMode()
         rebuildMenu()
     }
 
@@ -170,7 +173,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let shortcut = shortcutDisplayString()
         let recordItem = NSMenuItem(
             title: title,
-            action: #selector(toggleRecording),
+            action: SettingsStore.shared.activationMode == .hotkey ? #selector(toggleRecording) : nil,
             keyEquivalent: ""
         )
 
@@ -211,6 +214,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         HotkeyManager.shared.registerHotkey()
     }
 
+    // MARK: - Fn key monitor
+
+    private func setupFnKeyMonitor() {
+        FnKeyMonitor.shared.onFnPressed = { [weak self] in
+            guard SettingsStore.shared.activationMode == .pressToSpeak else { return }
+            self?.startRecording()
+        }
+
+        FnKeyMonitor.shared.onFnReleased = { [weak self] in
+            guard SettingsStore.shared.activationMode == .pressToSpeak else { return }
+            self?.stopRecording()
+        }
+    }
+
+    private func updateMonitoringMode() {
+        switch SettingsStore.shared.activationMode {
+        case .hotkey:
+            FnKeyMonitor.shared.stop()
+        case .pressToSpeak:
+            FnKeyMonitor.shared.start()
+        }
+    }
+
     // MARK: - Audio pipeline
 
     private func setupAudioPipeline() {
@@ -227,7 +253,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
 
         sonioxClient.onDisconnected = { [weak self] in
-            self?.stopRecording()
+            // Reset UI if still in recording state (connection dropped unexpectedly)
+            guard let self = self, self.isRecording else { return }
+            self.isRecording = false
+            self.statusItem.button?.image = self.normalIcon
+            self.rebuildMenu()
         }
 
         sonioxClient.onTranscript = { [weak self] text, isFinal in
@@ -243,11 +273,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 self.textPaster.paste(text + " ")
                 self.accumulatedText = ""
             }
+            self.sonioxClient.disconnect()
         }
 
         sonioxClient.onError = { [weak self] error in
-            self?.stopRecording()
-            self?.showError(error)
+            guard let self = self else { return }
+            self.isRecording = false
+            self.statusItem.button?.image = self.normalIcon
+            self.rebuildMenu()
+            self.audioRecorder.stopRecording()
+            self.showError(error)
         }
     }
 
@@ -306,20 +341,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         rebuildMenu()
 
         audioRecorder.stopRecording()
-        sonioxClient.finishAudio()
-        sonioxClient.disconnect()
-
-        // Paste any remaining accumulated text
-        let text = accumulatedText.trimmingCharacters(in: .whitespaces)
-        if !text.isEmpty {
-            textPaster.paste(text)
-        }
-        accumulatedText = ""
+        sonioxClient.sendFinalize()
     }
 
     // MARK: - Shortcut display
 
     private func shortcutDisplayString() -> String {
+        if SettingsStore.shared.activationMode == .pressToSpeak {
+            return "fn (hold)"
+        }
+
         let keys = SettingsStore.shared.shortcutKeys
         if keys.isTripleTap {
             switch keys.tapModifier {
